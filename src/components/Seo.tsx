@@ -22,11 +22,6 @@ const baseKeywords = [
   "Kigali AI",
   "chatbot Rwanda",
   "AI Afrika",
-  "AI assistant in Rwanda",
-  "best AI for Rwanda",
-  "Rwandan AI chatbot",
-  "Kigali technology",
-  "Kinyarwanda chatbot",
 ];
 
 const pageSeo: Record<string, SeoConfig> = {
@@ -106,27 +101,6 @@ const setMeta = (selector: string, attr: "content" | "href", value: string) => {
   if (element) element.setAttribute(attr, value);
 };
 
-
-const upsertAlternateLinks = (canonicalUrl: string) => {
-  const alternates = [
-    ["en-RW", canonicalUrl],
-    ["rw-RW", canonicalUrl],
-    ["fr-RW", canonicalUrl],
-    ["x-default", canonicalUrl],
-  ];
-
-  alternates.forEach(([hreflang, href]) => {
-    let element = document.head.querySelector<HTMLLinkElement>(`link[rel="alternate"][hreflang="${hreflang}"]`);
-    if (!element) {
-      element = document.createElement("link");
-      element.rel = "alternate";
-      element.hreflang = hreflang;
-      document.head.appendChild(element);
-    }
-    element.href = href;
-  });
-};
-
 const upsertMeta = (name: string, content: string, property = false) => {
   const attr = property ? "property" : "name";
   let element = document.head.querySelector<HTMLMetaElement>(`meta[${attr}="${name}"]`);
@@ -174,11 +148,6 @@ export function Seo() {
     upsertMeta("twitter:title", config.title);
     upsertMeta("twitter:description", config.description);
     upsertMeta("twitter:image", DEFAULT_IMAGE);
-    upsertMeta("geo.region", "RW");
-    upsertMeta("geo.placename", "Kigali, Rwanda");
-    upsertMeta("geo.position", "-1.9441;30.0619");
-    upsertMeta("ICBM", "-1.9441, 30.0619");
-    upsertAlternateLinks(canonicalUrl);
     setMeta('link[rel="canonical"]', "href", canonicalUrl);
     upsertSchema(config.schema);
   }, [location.pathname]);
