@@ -28,7 +28,7 @@ const pageSeo: Record<string, SeoConfig> = {
   "/": {
     title: "EgreedAI — Africa-first AI Assistant for Rwanda and Africa",
     description:
-      "Chat with EgreedAI, an Africa-first AI assistant from Kigali that supports English, French and Kinyarwanda with practical local context.",
+      "Chat with EgreedAI, a Rwanda-first AI assistant from Kigali for Kinyarwanda, English and French answers with practical local context.",
     canonicalPath: "/",
     robots: "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
     keywords: [...baseKeywords, "AI chat Rwanda", "multilingual AI assistant"].join(", "),
@@ -38,12 +38,14 @@ const pageSeo: Record<string, SeoConfig> = {
       name: "EgreedAI",
       url: `${SITE_URL}/`,
       applicationCategory: "BusinessApplication",
+      areaServed: [{ "@type": "Country", name: "Rwanda" }, { "@type": "Continent", name: "Africa" }],
+      audience: { "@type": "Audience", geographicArea: { "@type": "Country", name: "Rwanda" } },
       operatingSystem: "Web",
       inLanguage: ["en", "fr", "rw"],
       description:
-        "Africa-first AI assistant that speaks English, French and Kinyarwanda, built in Rwanda by Egreed Technology.",
+        "Rwanda-first AI assistant that speaks Kinyarwanda, English and French, built in Kigali by Egreed Technology.",
       publisher: { "@type": "Organization", name: "Egreed Technology LTD" },
-      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD", availability: "https://schema.org/InStock", areaServed: "RW" },
     },
   },
   "/builder": {
