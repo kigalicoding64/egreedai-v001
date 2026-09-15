@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.code-assist]
 verify_jwt = false
+
+[functions.nvidia-debug]
+verify_jwt = false
