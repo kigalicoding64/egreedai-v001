@@ -73,77 +73,126 @@ serve(async (req) => {
   const json = (b: unknown, status = 200) =>
     new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-  try {
-    const key = getNvidiaKey();
-    if (!key) return json({ error: "NVIDIA AI key is not configured." }, 500);
+  const key = getNvidiaKey();
+  if (!key) return json({ error: "NVIDIA AI key is not configured." }, 500);
 
-    const body = await req.json().catch(() => ({}));
-    const prompt = String(body?.prompt ?? "").trim();
-    const stack = String(body?.stack ?? "").slice(0, 200);
-    if (prompt.length < 8) return json({ error: "Describe the app you want in at least a sentence." }, 400);
-    if (prompt.length > 6000) return json({ error: "That request is too long — trim it to 6000 characters." }, 400);
+  const body = await req.json().catch(() => ({}));
+  const prompt = String(body?.prompt ?? "").trim();
+  const stack = String(body?.stack ?? "").slice(0, 200);
+  if (prompt.length < 8) return json({ error: "Describe the app you want in at least a sentence." }, 400);
+  if (prompt.length > 6000) return json({ error: "That request is too long — trim it to 6000 characters." }, 400);
 
-    const stages: { label: string; detail: string }[] = [];
+  // The build runs in several model passes, so stream progress as it happens.
+  const enc = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(ctrl) {
+      const send = (event: string, data: unknown) => {
+        try { ctrl.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)); } catch { /* closed */ }
+      };
+      const heartbeat = setInterval(() => {
+        try { ctrl.enqueue(enc.encode(": ping\n\n")); } catch { /* closed */ }
+      }, 10000);
 
-    // ── 1. PLAN
-    const plan = await planProject(prompt, stack, key);
-    if (!plan) return json({ error: "The planner could not shape this request. Try describing it more concretely." }, 502);
-    stages.push({ label: "Plan", detail: `${(plan.steps ?? []).length} build steps, ${(plan.files ?? []).length} files.` });
+      try {
+        // ── 1. PLAN
+        send("stage", { label: "Understanding the request", state: "active" });
+        const plan = await planProject(prompt, stack, key);
+        if (!plan) throw new Error("The planner could not shape this request. Try describing it more concretely.");
+        send("stage", {
+          label: "Plan",
+          state: "done",
+          detail: `${(plan.steps ?? []).length} build steps, ${(plan.files ?? []).length} files.`,
+        });
+        send("plan", {
+          name: plan.name ?? "egreed-app",
+          summary: plan.summary ?? "",
+          stack: plan.stack ?? [],
+          steps: plan.steps ?? [],
+          entities: plan.entities ?? [],
+          endpoints: plan.endpoints ?? [],
+        });
 
-    // ── 2. FILES (two batches so long projects fit the token budget)
-    const targets: { path: string; purpose: string }[] = (plan.files ?? [])
-      .filter((f: any) => f?.path)
-      .slice(0, 14)
-      .map((f: any) => ({ path: String(f.path), purpose: String(f.purpose ?? "") }));
-    if (!targets.length) return json({ error: "The planner returned no files." }, 502);
+        // ── 2. FILES (batched so long projects fit the token budget)
+        const targets: { path: string; purpose: string }[] = (plan.files ?? [])
+          .filter((f: any) => f?.path)
+          .slice(0, 14)
+          .map((f: any) => ({ path: String(f.path), purpose: String(f.purpose ?? "") }));
+        if (!targets.length) throw new Error("The planner returned no files.");
 
-    const half = Math.ceil(targets.length / 2);
-    const batches = targets.length > 7 ? [targets.slice(0, half), targets.slice(half)] : [targets];
-    let files: ProjectFile[] = [];
-    for (const batch of batches) {
-      const produced = await writeFiles(prompt, plan, key, batch);
-      files = files.concat(produced);
-    }
-    // De-dupe by path, last write wins.
-    const byPath = new Map<string, ProjectFile>();
-    for (const f of files) byPath.set(f.path, f);
-    files = [...byPath.values()];
-    if (!files.length) return json({ error: "No files were generated. Try again." }, 502);
-    stages.push({ label: "Generate", detail: `${files.length} files written.` });
+        const half = Math.ceil(targets.length / 2);
+        const batches = targets.length > 7 ? [targets.slice(0, half), targets.slice(half)] : [targets];
+        const byPath = new Map<string, ProjectFile>();
+        let batchNo = 0;
+        for (const batch of batches) {
+          batchNo++;
+          send("stage", {
+            label: `Writing code (${batchNo}/${batches.length})`,
+            state: "active",
+            detail: batch.map((b) => b.path).join(", "),
+          });
+          const produced = await writeFiles(prompt, plan, key, batch);
+          for (const f of produced) {
+            byPath.set(f.path, f);
+            send("file", { path: f.path, language: f.language ?? "", size: f.content.length });
+          }
+        }
+        let files = [...byPath.values()];
+        if (!files.length) throw new Error("No files were generated. Try again.");
+        send("stage", { label: "Generate", state: "done", detail: `${files.length} files written.` });
 
-    // ── 3. VALIDATE
-    const review = await validateProject(files, key);
-    const issues = Array.isArray(review?.issues) ? review.issues : [];
-    stages.push({
-      label: "Validate",
-      detail: issues.length ? `${issues.length} issue(s) found.` : "No material defects found on review.",
-    });
+        // ── 3. VALIDATE
+        send("stage", { label: "Validating the project", state: "active" });
+        const review = await validateProject(files, key);
+        const issues = Array.isArray(review?.issues) ? review.issues : [];
+        send("stage", {
+          label: "Validate",
+          state: "done",
+          detail: issues.length ? `${issues.length} issue(s) found.` : "No material defects found on review.",
+        });
 
-    // ── 4. FIX
-    let fixedCount = 0;
-    if (issues.length) {
-      const fixed = await fixFiles(files, issues, key);
-      for (const f of fixed) { byPath.set(f.path, f); fixedCount++; }
-      files = [...byPath.values()];
-      stages.push({ label: "Fix", detail: fixedCount ? `${fixedCount} file(s) repaired.` : "No automatic repair applied." });
-    }
+        // ── 4. FIX
+        let fixedCount = 0;
+        if (issues.length) {
+          send("stage", { label: "Fixing the problems found", state: "active", detail: `${issues.length} to repair` });
+          const fixed = await fixFiles(files, issues, key);
+          for (const f of fixed) { byPath.set(f.path, f); fixedCount++; }
+          files = [...byPath.values()];
+          send("stage", {
+            label: "Fix",
+            state: "done",
+            detail: fixedCount ? `${fixedCount} file(s) repaired.` : "No automatic repair applied.",
+          });
+        }
 
-    return json({
-      success: true,
-      project: {
-        name: plan.name ?? "egreed-app",
-        summary: plan.summary ?? "",
-        stack: plan.stack ?? [],
-        steps: plan.steps ?? [],
-        entities: plan.entities ?? [],
-        endpoints: plan.endpoints ?? [],
-        files,
-      },
-      stages,
-      validation: { ok: !issues.length, issues, repaired: fixedCount },
-    });
-  } catch (e) {
-    console.error("[build-app] fatal", (e as Error).message);
-    return json({ error: (e as Error).message || "unexpected error" }, 500);
-  }
+        send("done", {
+          success: true,
+          project: {
+            name: plan.name ?? "egreed-app",
+            summary: plan.summary ?? "",
+            stack: plan.stack ?? [],
+            steps: plan.steps ?? [],
+            entities: plan.entities ?? [],
+            endpoints: plan.endpoints ?? [],
+            files,
+          },
+          validation: { ok: !issues.length, issues, repaired: fixedCount },
+        });
+      } catch (e) {
+        console.error("[build-app] fatal", (e as Error).message);
+        send("error", { error: (e as Error).message || "unexpected error" });
+      } finally {
+        clearInterval(heartbeat);
+        try { ctrl.close(); } catch { /* already closed */ }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 });
