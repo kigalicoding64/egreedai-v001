@@ -8,24 +8,22 @@ export function getNvidiaKey(): string | undefined {
 
 // Preference ladder per job. First id that the account can actually serve wins.
 const PREFERENCE: Record<string, string[]> = {
+  // Verified live against this account (2026-09): these ids answer; others 404 or stall.
   code: [
-    "qwen/qwen3-coder-480b-a35b-instruct",
-    "qwen/qwen2.5-coder-32b-instruct",
-    "deepseek-ai/deepseek-v3.1",
-    "moonshotai/kimi-k2-instruct",
-    "nvidia/llama-3.3-nemotron-super-49b-v1",
-    "meta/llama-3.3-70b-instruct",
+    "nvidia/nemotron-3-super-120b-a12b",
+    "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "openai/gpt-oss-20b",
+    "z-ai/glm-5.3",
   ],
   reason: [
-    "deepseek-ai/deepseek-r1",
-    "nvidia/llama-3.3-nemotron-super-49b-v1",
-    "qwen/qwen3-next-80b-a3b-thinking",
-    "meta/llama-3.3-70b-instruct",
+    "nvidia/nemotron-3-super-120b-a12b",
+    "z-ai/glm-5.3",
+    "nvidia/nemotron-3.5-lightning-30b-a3b",
   ],
   text: [
-    "meta/llama-3.3-70b-instruct",
-    "nvidia/llama-3.3-nemotron-super-49b-v1",
-    "qwen/qwen2.5-coder-32b-instruct",
+    "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "nvidia/nemotron-3-super-120b-a12b",
+    "openai/gpt-oss-20b",
   ],
 };
 
@@ -75,36 +73,111 @@ export interface NvidiaOpts {
   maxTokens?: number;
   json?: boolean;
   model?: string;
+  /** Per-attempt timeout in ms. Slow or stuck models are dropped for the next candidate. */
+  timeoutMs?: number;
 }
 
-/** Non-streaming NVIDIA chat completion. Returns assistant text. */
+/** Ordered list of candidate models the account can actually serve. */
+export async function nvidiaCandidates(kind: "code" | "reason" | "text", key: string): Promise<string[]> {
+  const prefs = PREFERENCE[kind] ?? PREFERENCE.text;
+  const available = await loadCatalog(key);
+  const list = available.size ? prefs.filter((id) => available.has(id)) : prefs;
+  return list.length ? list : [prefs[prefs.length - 1]];
+}
+
+async function attempt(
+  model: string,
+  messages: { role: string; content: string }[],
+  key: string,
+  kind: "code" | "reason" | "text",
+  opts: NvidiaOpts,
+): Promise<string> {
+  // Nemotron models leak their internal analysis into `content` unless thinking is off.
+  const msgs = /nemotron/i.test(model)
+    ? [{ role: "system", content: "detailed thinking off" }, ...messages]
+    : messages;
+  const body: Record<string, unknown> = {
+    model,
+    messages: msgs,
+    temperature: opts.temperature ?? (kind === "code" ? 0.2 : 0.6),
+    max_tokens: opts.maxTokens ?? 4096,
+    stream: false,
+  };
+  if (opts.json) body.response_format = { type: "json_object" };
+  // Stream so a long answer is judged on time-to-first-token, not total generation time.
+  body.stream = true;
+
+  const ctrl = new AbortController();
+  const idleMs = opts.timeoutMs ?? 25000;
+  const hardMs = 150000;
+  let idle = setTimeout(() => ctrl.abort(), idleMs);
+  const hard = setTimeout(() => ctrl.abort(), hardMs);
+  const bump = () => {
+    clearTimeout(idle);
+    idle = setTimeout(() => ctrl.abort(), idleMs);
+  };
+
+  try {
+    const r = await fetch(`${NVIDIA_BASE}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) throw new Error(`nvidia ${r.status} (${model}): ${(await r.text()).slice(0, 300)}`);
+    if (!r.body) throw new Error(`nvidia no stream body (${model})`);
+
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    let out = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bump();
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        const s = line.trim();
+        if (!s.startsWith("data:")) continue;
+        const payload = s.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        try {
+          const j = JSON.parse(payload);
+          out += String(j?.choices?.[0]?.delta?.content ?? "");
+        } catch { /* partial frame */ }
+      }
+    }
+
+    const text = out.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+    if (!text) throw new Error(`nvidia empty reply (${model})`);
+    return text;
+  } finally {
+    clearTimeout(idle);
+    clearTimeout(hard);
+  }
+}
+
+/** Non-streaming NVIDIA chat completion with automatic model failover. */
 export async function callNvidia(
   kind: "code" | "reason" | "text",
   messages: { role: string; content: string }[],
   key: string,
   opts: NvidiaOpts = {},
 ): Promise<{ text: string; model: string }> {
-  const model = opts.model ?? (await pickNvidiaModel(kind, key));
-  const body: Record<string, unknown> = {
-    model,
-    messages,
-    temperature: opts.temperature ?? (kind === "code" ? 0.2 : 0.6),
-    max_tokens: opts.maxTokens ?? 4096,
-    stream: false,
-  };
-  if (opts.json) body.response_format = { type: "json_object" };
-
-  const r = await fetch(`${NVIDIA_BASE}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(`nvidia ${r.status} (${model}): ${(await r.text()).slice(0, 400)}`);
-  const data = await r.json();
-  let text = String(data?.choices?.[0]?.message?.content ?? "");
-  // Reasoning models can emit <think> blocks — strip them from user-facing text.
-  text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-  return { text, model };
+  const models = opts.model ? [opts.model] : await nvidiaCandidates(kind, key);
+  let last: Error | null = null;
+  for (const model of models.slice(0, 4)) {
+    try {
+      const text = await attempt(model, messages, key, kind, opts);
+      return { text, model };
+    } catch (e) {
+      last = e as Error;
+      console.error("[nvidia] attempt failed", model, last.message);
+    }
+  }
+  throw last ?? new Error("nvidia: no model available");
 }
 
 /** Extract the first JSON object/array from a model reply, tolerating fences and prose. */
