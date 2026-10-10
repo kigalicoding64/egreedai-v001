@@ -13,6 +13,8 @@ import Creator from "./pages/Creator";
 import KinyarwandaEval from "./pages/KinyarwandaEval";
 import ModelEval from "./pages/ModelEval";
 import NotFound from "./pages/NotFound";
+import AppBuilder from "./pages/AppBuilder";
+import CodeLab from "./pages/CodeLab";
 import { Seo } from "./components/Seo";
 
 const queryClient = new QueryClient();
@@ -33,6 +35,8 @@ const App = () => (
           <Route path="/creator" element={<Creator />} />
 
           <Route path="/kinyarwanda-eval" element={<KinyarwandaEval />} />
+          <Route path="/app-builder" element={<AppBuilder />} />
+          <Route path="/code-lab" element={<CodeLab />} />
           <Route path="/model-eval" element={<ModelEval />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

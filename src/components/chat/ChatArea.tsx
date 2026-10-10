@@ -149,6 +149,13 @@ export function ChatArea({
           <Code2 className="w-5 h-5 text-muted-foreground hover:text-foreground transition-colors" />
         </Button>
 
+        <Button variant="ghost" size="sm" onClick={() => navigate('/code-lab')} className="text-xs" title="Code Lab: write, run and debug code">
+          Code Lab
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/app-builder')} className="text-xs" title="Build a full app from a prompt">
+          App Builder
+        </Button>
+
         <Button
           variant="ghost"
           size="icon"
