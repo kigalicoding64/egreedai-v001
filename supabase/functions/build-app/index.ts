@@ -87,7 +87,7 @@ serve(async (req) => {
       if (prompt.length < 8) return json({ error: "Describe the app you want in at least a sentence." }, 400);
       const plan = await planProject(prompt, stack, key);
       if (!plan || !Array.isArray(plan.files) || !plan.files.length) return json({ error: "The planner could not shape this request. Try describing it more concretely." }, 422);
-      plan.files = plan.files.filter((f: any) => f?.path).slice(0, 14);
+      const seen = new Set<string>(); plan.files = plan.files.filter((f: any) => f?.path && !seen.has(f.path) && seen.add(f.path)).slice(0, 14);
       return json({ plan });
     }
     if (stage === "files") {
