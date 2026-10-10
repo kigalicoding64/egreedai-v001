@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getNvidiaKey } from "../_shared/nvidia.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,19 +14,40 @@ serve(async (req) => {
     const LLAMA_STACK_API_KEY = Deno.env.get("LLAMA_STACK_API_KEY");
     const LLAMA_STACK_MODEL = Deno.env.get("LLAMA_STACK_MODEL") || "llama3.1";
 
-    if (!LLAMA_STACK_URL) {
-      return new Response(
-        JSON.stringify({
-          error: "LLAMA_STACK_URL is not configured. Add it in your project secrets to enable your self-hosted model.",
-          notConfigured: true,
-        }),
-        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
     const { messages, stream = true } = await req.json();
     if (!messages || !Array.isArray(messages)) {
       throw new Error("messages array is required");
+    }
+
+    // No self-hosted Llama configured → serve the request with NVIDIA AI
+    // (OpenAI-compatible stream, so existing clients parse it unchanged).
+    if (!LLAMA_STACK_URL) {
+      const key = getNvidiaKey();
+      if (!key) {
+        return new Response(JSON.stringify({ error: "AI is not configured.", notConfigured: true }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const models = ["openai/gpt-oss-20b", "nvidia/nemotron-3.5-lightning-30b-a3b", "nvidia/nemotron-3-super-120b-a12b"];
+      let lastErr = "";
+      for (const model of models) {
+        const msgs = model.startsWith("nvidia/nemotron")
+          ? [{ role: "system", content: "detailed thinking off" }, ...messages]
+          : messages;
+        const r = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({ model, messages: msgs, stream, temperature: 0.3, max_tokens: 6000 }),
+        }).catch((e) => { lastErr = String(e); return null; });
+        if (r && r.ok && r.body) {
+          return new Response(r.body, {
+            headers: { ...corsHeaders, "Content-Type": stream ? "text/event-stream" : "application/json" },
+          });
+        }
+        if (r) lastErr = `${r.status} ${await r.text().catch(() => "")}`.slice(0, 300);
+        console.error("[llama-chat] nvidia fallback failed", model, lastErr);
+      }
+      return new Response(JSON.stringify({ error: "AI generation is temporarily unavailable. Please try again." }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const headers: Record<string, string> = {
