@@ -75,6 +75,10 @@ export interface NvidiaOpts {
   model?: string;
   /** Per-attempt timeout in ms. Slow or stuck models are dropped for the next candidate. */
   timeoutMs?: number;
+  /** Total budget across all failover attempts (ms). Keeps edge calls under the 150s limit. */
+  deadlineMs?: number;
+  /** Internal: absolute time this attempt must finish by. */
+  _until?: number;
 }
 
 /** Ordered list of candidate models the account can actually serve. */
@@ -109,7 +113,7 @@ async function attempt(
 
   const ctrl = new AbortController();
   const idleMs = opts.timeoutMs ?? 25000;
-  const hardMs = 150000;
+  const hardMs = Math.max(1000, Math.min(150000, (opts._until ?? Infinity) - Date.now()));
   let idle = setTimeout(() => ctrl.abort(), idleMs);
   const hard = setTimeout(() => ctrl.abort(), hardMs);
   const bump = () => {
@@ -168,9 +172,11 @@ export async function callNvidia(
 ): Promise<{ text: string; model: string }> {
   const models = opts.model ? [opts.model] : await nvidiaCandidates(kind, key);
   let last: Error | null = null;
+  const until = Date.now() + (opts.deadlineMs ?? 125000);
   for (const model of models.slice(0, 4)) {
+    if (until - Date.now() < 8000) break;
     try {
-      const text = await attempt(model, messages, key, kind, opts);
+      const text = await attempt(model, messages, key, kind, { ...opts, _until: until });
       return { text, model };
     } catch (e) {
       last = e as Error;
