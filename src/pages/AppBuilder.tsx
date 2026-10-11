@@ -54,7 +54,7 @@ export default function AppBuilder() {
       }
       let all = [...byPath.values()];
       if (!all.length) throw new Error('No files were generated. Try again.');
-      setSelected(all[0].path);
+
 
       label = 'Reviewing for defects';
       push({ label, state: 'active' });
@@ -139,7 +139,7 @@ export default function AppBuilder() {
         )}
       </header>
       <div className="flex-1 grid md:grid-cols-[340px_1fr] overflow-hidden">
-        <aside className="border-r border-border p-4 space-y-3 overflow-y-auto">
+        <aside className="border-r border-border p-4 space-y-3 overflow-y-auto flex flex-col">
           <Textarea rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)}
             placeholder="Describe the app: e.g. A booking API for a Kigali salon with customers, services and appointments" />
           <Input value={stack} onChange={(e) => setStack(e.target.value)} placeholder="Preferred stack (optional)" />
@@ -156,7 +156,7 @@ export default function AppBuilder() {
               </div>
             ))}
           </div>
-          {plan && <div className="text-xs space-y-1 border-t border-border pt-3"><p className="font-semibold">{plan.name}</p><p className="text-muted-foreground">{plan.summary}</p></div>}
+          {plan && <div className="mt-auto text-xs space-y-1 border-t border-border pt-3"><p className="font-semibold">{plan.name}</p><p className="text-muted-foreground">{plan.summary}</p></div>}
           {issues.length > 0 && (
             <div className="text-xs space-y-1 border-t border-border pt-3">
               <p className="font-semibold">Review report</p>
