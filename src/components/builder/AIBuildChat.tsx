@@ -1,3 +1,4 @@
+import { MODERN_DESIGN_BRIEF } from '@/lib/designBrief';
 import { useState, useRef, useEffect } from 'react';
 import { Sparkles, Send, Loader2, Bot, User, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
