@@ -23,10 +23,40 @@ ${QUALITY_REQUIREMENTS.map((q) => `- ${q}`).join("\n")}
 - Use the stack the user asked for. If they did not say, use TypeScript + React (Vite) on the front end, Node.js + Express on the API, and PostgreSQL for data.
 - Front-end design must feel like a modern 2026 product: one consistent visual direction, a design-token theme (CSS variables for colours, radius, shadows), Tailwind CSS, responsive mobile-first layouts, app shell with sidebar/topbar for dashboards, cards with soft shadows and 16px+ radius, loading skeletons, empty states, toast feedback, accessible labels and keyboard focus styles, and smooth subtle transitions.`;
 
+// NVIDIA first; if every NVIDIA model stalls or returns empty, fall back to the
+// Lovable AI Gateway so a slow provider never fails the whole build step.
+async function llm(kind: "code" | "reason" | "text", messages: { role: string; content: string }[], key: string, opts: any) {
+  try {
+    return await callNvidia(kind, messages, key, { ...opts, deadlineMs: 60000, timeoutMs: 20000 });
+  } catch (e) {
+    console.error("[build-app] nvidia failed, using gateway", (e as Error).message);
+    const lk = Deno.env.get("LOVABLE_API_KEY");
+    if (!lk) throw e;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 75000);
+    try {
+      const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${lk}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "openai/gpt-6-astra", messages, ...(opts?.json ? { response_format: { type: "json_object" } } : {}) }),
+        signal: ctrl.signal,
+      });
+      if (!r.ok) throw new Error(`The AI service is busy (${r.status}). Please try again.`);
+      const j = await r.json();
+      const text = String(j?.choices?.[0]?.message?.content ?? "");
+      if (!text) throw new Error("The AI returned an empty answer. Please try again.");
+      return { text, model: "gateway" };
+    } catch (err) {
+      if ((err as Error).name === "AbortError") throw new Error("The AI took too long on this step. Please try again.");
+      throw err;
+    } finally { clearTimeout(t); }
+  }
+}
+
 function sysWith(extra: string) { return `${ARCHITECT}\n\n${extra}`; }
 
 async function planProject(prompt: string, stack: string, key: string) {
-  const { text } = await callNvidia("reason", [
+  const { text } = await llm("reason", [
     { role: "system", content: sysWith(`Plan the project. Reply with JSON only, no prose:
 {"name":"kebab-case-name","summary":"one sentence","stack":["..."],"steps":["ordered build steps"],"entities":[{"name":"table_name","fields":["id uuid pk","..."],"notes":"..."}],"endpoints":[{"method":"GET","path":"/api/...","purpose":"...","auth":"public|user|admin"}],"files":[{"path":"relative/path.ext","purpose":"what it contains"}]}
 Keep it to at most 14 files. Include a README, the API entry point, the data layer, at least one test file, and a package/dependency manifest.`) },
@@ -36,7 +66,7 @@ Keep it to at most 14 files. Include a README, the API entry point, the data lay
 }
 
 async function writeFiles(prompt: string, plan: any, key: string, targets: { path: string; purpose: string }[]) {
-  const { text } = await callNvidia("code", [
+  const { text } = await llm("code", [
     { role: "system", content: sysWith(`Write the actual file contents. Reply with JSON only:
 {"files":[{"path":"...","language":"ts|tsx|js|sql|json|md|py|...","content":"FULL file content"}]}
 Escape newlines properly inside JSON strings. Write every requested file completely.`) },
@@ -48,7 +78,7 @@ Escape newlines properly inside JSON strings. Write every requested file complet
 
 async function validateProject(files: ProjectFile[], key: string) {
   const listing = files.map((f) => `--- ${f.path} ---\n${f.content}`).join("\n\n").slice(0, 30000);
-  const { text } = await callNvidia("reason", [
+  const { text } = await llm("reason", [
     { role: "system", content: `You are the validation stage. Read the project files and report real defects only: syntax errors, imports of files or packages that do not exist in the project or manifest, undefined symbols, mismatched route/handler names, schema/query mismatches, missing input validation, security holes (injection, broken authorization, secret exposure), and incomplete files.
 Reply with JSON only: {"ok":true|false,"issues":[{"path":"file","severity":"high|medium|low","problem":"...","fix":"..."}]}` },
     { role: "user", content: listing },
@@ -60,7 +90,7 @@ async function fixFiles(files: ProjectFile[], issues: any[], key: string) {
   const paths = [...new Set(issues.map((i) => i?.path).filter(Boolean))];
   const subset = files.filter((f) => paths.includes(f.path));
   if (!subset.length) return [];
-  const { text } = await callNvidia("code", [
+  const { text } = await llm("code", [
     { role: "system", content: sysWith(`Fix the defects. Reply with JSON only: {"files":[{"path":"...","language":"...","content":"FULL corrected file"}]}. Return every file you changed, complete. Change nothing that was not a defect.`) },
     { role: "user", content: `Defects:\n${JSON.stringify(issues, null, 2)}\n\nCurrent files:\n${subset.map((f) => `--- ${f.path} ---\n${f.content}`).join("\n\n").slice(0, 26000)}` },
   ], key, { temperature: 0.1, maxTokens: 7000, json: true });
