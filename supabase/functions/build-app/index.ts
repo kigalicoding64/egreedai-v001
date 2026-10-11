@@ -23,6 +23,31 @@ ${QUALITY_REQUIREMENTS.map((q) => `- ${q}`).join("\n")}
 - Use the stack the user asked for. If they did not say, use TypeScript + React (Vite) on the front end, Node.js + Express on the API, and PostgreSQL for data.
 - Front-end design must feel like a modern 2026 product: one consistent visual direction, a design-token theme (CSS variables for colours, radius, shadows), Tailwind CSS, responsive mobile-first layouts, app shell with sidebar/topbar for dashboards, cards with soft shadows and 16px+ radius, loading skeletons, empty states, toast feedback, accessible labels and keyboard focus styles, and smooth subtle transitions.`;
 
+async function gateway(messages: { role: string; content: string }[], json: boolean) {
+  const lk = Deno.env.get("LOVABLE_API_KEY");
+  if (!lk) throw new Error("Backup AI is not configured.");
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 75000);
+  try {
+    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${lk}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "openai/gpt-6-astra", messages, ...(json ? { response_format: { type: "json_object" } } : {}) }),
+      signal: ctrl.signal,
+    });
+    if (r.status === 402) throw new Error("AI credits have run out. Please top up and try again.");
+    if (r.status === 429) throw new Error("The AI is busy right now. Please wait a moment and try again.");
+    if (!r.ok) throw new Error(`The AI service had a problem (${r.status}). Please try again.`);
+    const j = await r.json();
+    const text = String(j?.choices?.[0]?.message?.content ?? "");
+    if (!text) throw new Error("The AI returned an empty answer. Please try again.");
+    return { text, model: "gateway" };
+  } catch (err) {
+    if ((err as Error).name === "AbortError") throw new Error("The AI took too long on this step. Please try again.");
+    throw err;
+  } finally { clearTimeout(t); }
+}
+
 // NVIDIA first; if every NVIDIA model stalls or returns empty, fall back to the
 // Lovable AI Gateway so a slow provider never fails the whole build step.
 async function llm(kind: "code" | "reason" | "text", messages: { role: string; content: string }[], key: string, opts: any) {
@@ -30,50 +55,58 @@ async function llm(kind: "code" | "reason" | "text", messages: { role: string; c
     return await callNvidia(kind, messages, key, { ...opts, deadlineMs: 60000, timeoutMs: 20000 });
   } catch (e) {
     console.error("[build-app] nvidia failed, using gateway", (e as Error).message);
-    const lk = Deno.env.get("LOVABLE_API_KEY");
-    if (!lk) throw e;
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 75000);
-    try {
-      const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${lk}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "openai/gpt-6-astra", messages, ...(opts?.json ? { response_format: { type: "json_object" } } : {}) }),
-        signal: ctrl.signal,
-      });
-      if (!r.ok) throw new Error(`The AI service is busy (${r.status}). Please try again.`);
-      const j = await r.json();
-      const text = String(j?.choices?.[0]?.message?.content ?? "");
-      if (!text) throw new Error("The AI returned an empty answer. Please try again.");
-      return { text, model: "gateway" };
-    } catch (err) {
-      if ((err as Error).name === "AbortError") throw new Error("The AI took too long on this step. Please try again.");
-      throw err;
-    } finally { clearTimeout(t); }
+    return await gateway(messages, !!opts?.json);
   }
+}
+
+/** Accept the plan shapes models actually return (wrapped, string file lists, alt keys). */
+function normalizePlan(raw: any): any | null {
+  if (!raw || typeof raw !== "object") return null;
+  const p = raw.plan && typeof raw.plan === "object" ? raw.plan : raw.project && typeof raw.project === "object" ? raw.project : raw;
+  let files = p.files ?? p.file_tree ?? p.fileTree ?? p.structure;
+  if (files && !Array.isArray(files) && typeof files === "object") files = Object.entries(files).map(([path, purpose]) => ({ path, purpose: String(purpose ?? "") }));
+  if (!Array.isArray(files)) return null;
+  files = files.map((f: any) => typeof f === "string" ? { path: f.trim(), purpose: "" } : { path: String(f?.path ?? f?.name ?? f?.file ?? "").trim(), purpose: String(f?.purpose ?? f?.description ?? "") })
+    .filter((f: any) => f.path && !f.path.endsWith("/"));
+  if (!files.length) return null;
+  return { ...p, name: String(p.name ?? "egreed-app"), summary: String(p.summary ?? p.description ?? ""), files };
 }
 
 function sysWith(extra: string) { return `${ARCHITECT}\n\n${extra}`; }
 
 async function planProject(prompt: string, stack: string, key: string) {
-  const { text } = await llm("reason", [
+  const msgs = [
     { role: "system", content: sysWith(`Plan the project. Reply with JSON only, no prose:
 {"name":"kebab-case-name","summary":"one sentence","stack":["..."],"steps":["ordered build steps"],"entities":[{"name":"table_name","fields":["id uuid pk","..."],"notes":"..."}],"endpoints":[{"method":"GET","path":"/api/...","purpose":"...","auth":"public|user|admin"}],"files":[{"path":"relative/path.ext","purpose":"what it contains"}]}
 Keep it to at most 14 files. Include a README, the API entry point, the data layer, at least one test file, and a package/dependency manifest.`) },
     { role: "user", content: `Build request:\n${prompt}\n\nPreferred stack: ${stack || "your choice"}` },
-  ], key, { temperature: 0.2, maxTokens: 2500, json: true });
-  return extractJson<any>(text);
+  ];
+  const { text } = await llm("reason", msgs, key, { temperature: 0.2, maxTokens: 4000, json: true });
+  const plan = normalizePlan(extractJson<any>(text));
+  if (plan) return plan;
+  console.error("[build-app] plan unparseable, retrying on gateway:", text.slice(0, 300));
+  const second = await gateway(msgs, true);
+  const plan2 = normalizePlan(extractJson<any>(second.text));
+  if (!plan2) console.error("[build-app] gateway plan unparseable:", second.text.slice(0, 300));
+  return plan2;
 }
 
 async function writeFiles(prompt: string, plan: any, key: string, targets: { path: string; purpose: string }[]) {
-  const { text } = await llm("code", [
+  const msgs = [
     { role: "system", content: sysWith(`Write the actual file contents. Reply with JSON only:
 {"files":[{"path":"...","language":"ts|tsx|js|sql|json|md|py|...","content":"FULL file content"}]}
 Escape newlines properly inside JSON strings. Write every requested file completely.`) },
     { role: "user", content: `Build request:\n${prompt}\n\nProject plan:\n${JSON.stringify({ name: plan?.name, stack: plan?.stack, entities: plan?.entities, endpoints: plan?.endpoints }, null, 2)}\n\nWrite exactly these files now:\n${targets.map((f) => `- ${f.path}: ${f.purpose}`).join("\n")}` },
-  ], key, { temperature: 0.15, maxTokens: 6000, json: true });
-  const parsed = extractJson<{ files: ProjectFile[] }>(text);
-  return Array.isArray(parsed?.files) ? parsed!.files.filter((f) => f?.path && typeof f.content === "string") : [];
+  ];
+  const pick = (t: string) => {
+    const parsed = extractJson<{ files: ProjectFile[] }>(t);
+    return Array.isArray(parsed?.files) ? parsed!.files.filter((f) => f?.path && typeof f.content === "string") : [];
+  };
+  const { text } = await llm("code", msgs, key, { temperature: 0.15, maxTokens: 6000, json: true });
+  const out = pick(text);
+  if (out.length) return out;
+  console.error("[build-app] files unparseable, retrying on gateway:", text.slice(0, 200));
+  return pick((await gateway(msgs, true)).text);
 }
 
 async function validateProject(files: ProjectFile[], key: string) {
