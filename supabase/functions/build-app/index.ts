@@ -2,6 +2,7 @@
 // PLAN → SCHEMA/API → FILES → TESTS → VALIDATE → FIX, powered by NVIDIA AI (`nvdiaapi`).
 // Returns a complete file tree the client can browse, edit and download.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { callNvidia, extractJson, getNvidiaKey } from "../_shared/nvidia.ts";
 import { QUALITY_REQUIREMENTS } from "../_shared/playbooks.ts";
 
@@ -23,24 +24,54 @@ ${QUALITY_REQUIREMENTS.map((q) => `- ${q}`).join("\n")}
 - Use the stack the user asked for. If they did not say, use TypeScript + React (Vite) on the front end, Node.js + Express on the API, and PostgreSQL for data.
 - Front-end design must feel like a modern 2026 product: one consistent visual direction, a design-token theme (CSS variables for colours, radius, shadows), Tailwind CSS, responsive mobile-first layouts, app shell with sidebar/topbar for dashboards, cards with soft shadows and 16px+ radius, loading skeletons, empty states, toast feedback, accessible labels and keyboard focus styles, and smooth subtle transitions.`;
 
+// Edge requests are cut at 150s; every stage must finish before this point.
+const REQUEST_BUDGET_MS = 138000;
+// Per-request start time (requests can run concurrently in one worker).
+const reqStore = new AsyncLocalStorage<number>();
+const remaining = () => REQUEST_BUDGET_MS - (Date.now() - (reqStore.getStore() ?? Date.now()));
+
+// Streamed so long files are judged on steady progress, not one buffered wait.
 async function gateway(messages: { role: string; content: string }[], json: boolean) {
   const lk = Deno.env.get("LOVABLE_API_KEY");
   if (!lk) throw new Error("Backup AI is not configured.");
+  const budget = remaining() - 2000;
+  if (budget < 10000) throw new Error("The AI took too long on this step. Please try again.");
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 75000);
+  const t = setTimeout(() => ctrl.abort(), budget);
   try {
     const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${lk}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "openai/gpt-6-astra", messages, ...(json ? { response_format: { type: "json_object" } } : {}) }),
+      headers: { Authorization: `Bearer ${lk}`, "Content-Type": "application/json", "X-Lovable-AIG-SDK": "fetch" },
+      body: JSON.stringify({
+        model: "openai/gpt-6-astra", messages, stream: true, reasoning_effort: "low",
+        ...(json ? { response_format: { type: "json_object" } } : {}),
+      }),
       signal: ctrl.signal,
     });
     if (r.status === 402) throw new Error("AI credits have run out. Please top up and try again.");
     if (r.status === 429) throw new Error("The AI is busy right now. Please wait a moment and try again.");
-    if (!r.ok) throw new Error(`The AI service had a problem (${r.status}). Please try again.`);
-    const j = await r.json();
-    const text = String(j?.choices?.[0]?.message?.content ?? "");
-    if (!text) throw new Error("The AI returned an empty answer. Please try again.");
+    if (!r.ok || !r.body) {
+      console.error("[build-app] gateway", r.status, (await r.text().catch(() => "")).slice(0, 300));
+      throw new Error(`The AI service had a problem (${r.status}). Please try again.`);
+    }
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "", text = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        const s = line.trim();
+        if (!s.startsWith("data:")) continue;
+        const p = s.slice(5).trim();
+        if (!p || p === "[DONE]") continue;
+        try { text += String(JSON.parse(p)?.choices?.[0]?.delta?.content ?? ""); } catch { /* partial */ }
+      }
+    }
+    if (!text.trim()) throw new Error("The AI returned an empty answer. Please try again.");
     return { text, model: "gateway" };
   } catch (err) {
     if ((err as Error).name === "AbortError") throw new Error("The AI took too long on this step. Please try again.");
@@ -48,14 +79,26 @@ async function gateway(messages: { role: string; content: string }[], json: bool
   } finally { clearTimeout(t); }
 }
 
-// NVIDIA first; if every NVIDIA model stalls or returns empty, fall back to the
-// Lovable AI Gateway so a slow provider never fails the whole build step.
+// Planning/review: NVIDIA first with a short budget, then the backup AI.
 async function llm(kind: "code" | "reason" | "text", messages: { role: string; content: string }[], key: string, opts: any) {
   try {
-    return await callNvidia(kind, messages, key, { ...opts, deadlineMs: 60000, timeoutMs: 20000 });
+    return await callNvidia(kind, messages, key, { ...opts, deadlineMs: 40000, timeoutMs: 15000 });
   } catch (e) {
     console.error("[build-app] nvidia failed, using gateway", (e as Error).message);
     return await gateway(messages, !!opts?.json);
+  }
+}
+
+// File writing: NVIDIA models stall or return empty on long files, so the
+// backup AI goes first and gets the full time budget; NVIDIA is the fallback.
+async function codeLlm(messages: { role: string; content: string }[], key: string, opts: any) {
+  try {
+    return await gateway(messages, true);
+  } catch (e) {
+    const msg = (e as Error).message;
+    console.error("[build-app] gateway failed for files", msg);
+    if (/credits|busy/i.test(msg) || remaining() < 30000) throw e;
+    return await callNvidia("code", messages, key, { ...opts, deadlineMs: remaining() - 5000, timeoutMs: 20000 });
   }
 }
 
@@ -102,10 +145,11 @@ Escape newlines properly inside JSON strings. Write every requested file complet
     const parsed = extractJson<{ files: ProjectFile[] }>(t);
     return Array.isArray(parsed?.files) ? parsed!.files.filter((f) => f?.path && typeof f.content === "string") : [];
   };
-  const { text } = await llm("code", msgs, key, { temperature: 0.15, maxTokens: 6000, json: true });
+  const { text } = await codeLlm(msgs, key, { temperature: 0.15, maxTokens: 6000, json: true });
   const out = pick(text);
   if (out.length) return out;
-  console.error("[build-app] files unparseable, retrying on gateway:", text.slice(0, 200));
+  console.error("[build-app] files unparseable:", text.slice(0, 200));
+  if (remaining() < 45000) throw new Error("The AI's answer for this file was unreadable. Please try again.");
   return pick((await gateway(msgs, true)).text);
 }
 
@@ -123,7 +167,7 @@ async function fixFiles(files: ProjectFile[], issues: any[], key: string) {
   const paths = [...new Set(issues.map((i) => i?.path).filter(Boolean))];
   const subset = files.filter((f) => paths.includes(f.path));
   if (!subset.length) return [];
-  const { text } = await llm("code", [
+  const { text } = await codeLlm([
     { role: "system", content: sysWith(`Fix the defects. Reply with JSON only: {"files":[{"path":"...","language":"...","content":"FULL corrected file"}]}. Return every file you changed, complete. Change nothing that was not a defect.`) },
     { role: "user", content: `Defects:\n${JSON.stringify(issues, null, 2)}\n\nCurrent files:\n${subset.map((f) => `--- ${f.path} ---\n${f.content}`).join("\n\n").slice(0, 26000)}` },
   ], key, { temperature: 0.1, maxTokens: 7000, json: true });
@@ -131,7 +175,9 @@ async function fixFiles(files: ProjectFile[], issues: any[], key: string) {
   return Array.isArray(parsed?.files) ? parsed!.files.filter((f) => f?.path && typeof f.content === "string") : [];
 }
 
-serve(async (req) => {
+serve((req) => reqStore.run(Date.now(), () => handle(req)));
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const json = (b: unknown, status = 200) =>
@@ -173,4 +219,4 @@ serve(async (req) => {
     console.error("[build-app]", stage, (e as Error).message);
     return json({ error: (e as Error).message || "unexpected error" }, 500);
   }
-});
+}
