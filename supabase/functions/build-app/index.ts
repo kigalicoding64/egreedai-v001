@@ -92,14 +92,21 @@ Keep it to at most 14 files. Include a README, the API entry point, the data lay
 }
 
 async function writeFiles(prompt: string, plan: any, key: string, targets: { path: string; purpose: string }[]) {
-  const { text } = await llm("code", [
+  const msgs = [
     { role: "system", content: sysWith(`Write the actual file contents. Reply with JSON only:
 {"files":[{"path":"...","language":"ts|tsx|js|sql|json|md|py|...","content":"FULL file content"}]}
 Escape newlines properly inside JSON strings. Write every requested file completely.`) },
     { role: "user", content: `Build request:\n${prompt}\n\nProject plan:\n${JSON.stringify({ name: plan?.name, stack: plan?.stack, entities: plan?.entities, endpoints: plan?.endpoints }, null, 2)}\n\nWrite exactly these files now:\n${targets.map((f) => `- ${f.path}: ${f.purpose}`).join("\n")}` },
-  ], key, { temperature: 0.15, maxTokens: 6000, json: true });
-  const parsed = extractJson<{ files: ProjectFile[] }>(text);
-  return Array.isArray(parsed?.files) ? parsed!.files.filter((f) => f?.path && typeof f.content === "string") : [];
+  ];
+  const pick = (t: string) => {
+    const parsed = extractJson<{ files: ProjectFile[] }>(t);
+    return Array.isArray(parsed?.files) ? parsed!.files.filter((f) => f?.path && typeof f.content === "string") : [];
+  };
+  const { text } = await llm("code", msgs, key, { temperature: 0.15, maxTokens: 6000, json: true });
+  const out = pick(text);
+  if (out.length) return out;
+  console.error("[build-app] files unparseable, retrying on gateway:", text.slice(0, 200));
+  return pick((await gateway(msgs, true)).text);
 }
 
 async function validateProject(files: ProjectFile[], key: string) {
