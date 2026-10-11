@@ -143,10 +143,11 @@ Escape newlines properly inside JSON strings. Write every requested file complet
     const parsed = extractJson<{ files: ProjectFile[] }>(t);
     return Array.isArray(parsed?.files) ? parsed!.files.filter((f) => f?.path && typeof f.content === "string") : [];
   };
-  const { text } = await llm("code", msgs, key, { temperature: 0.15, maxTokens: 6000, json: true });
+  const { text } = await codeLlm(msgs, key, { temperature: 0.15, maxTokens: 6000, json: true });
   const out = pick(text);
   if (out.length) return out;
-  console.error("[build-app] files unparseable, retrying on gateway:", text.slice(0, 200));
+  console.error("[build-app] files unparseable:", text.slice(0, 200));
+  if (remaining() < 45000) throw new Error("The AI's answer for this file was unreadable. Please try again.");
   return pick((await gateway(msgs, true)).text);
 }
 
@@ -164,7 +165,7 @@ async function fixFiles(files: ProjectFile[], issues: any[], key: string) {
   const paths = [...new Set(issues.map((i) => i?.path).filter(Boolean))];
   const subset = files.filter((f) => paths.includes(f.path));
   if (!subset.length) return [];
-  const { text } = await llm("code", [
+  const { text } = await codeLlm([
     { role: "system", content: sysWith(`Fix the defects. Reply with JSON only: {"files":[{"path":"...","language":"...","content":"FULL corrected file"}]}. Return every file you changed, complete. Change nothing that was not a defect.`) },
     { role: "user", content: `Defects:\n${JSON.stringify(issues, null, 2)}\n\nCurrent files:\n${subset.map((f) => `--- ${f.path} ---\n${f.content}`).join("\n\n").slice(0, 26000)}` },
   ], key, { temperature: 0.1, maxTokens: 7000, json: true });
@@ -174,6 +175,7 @@ async function fixFiles(files: ProjectFile[], issues: any[], key: string) {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  requestStart = Date.now();
 
   const json = (b: unknown, status = 200) =>
     new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
