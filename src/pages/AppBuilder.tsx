@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -54,7 +54,7 @@ export default function AppBuilder() {
       }
       let all = [...byPath.values()];
       if (!all.length) throw new Error('No files were generated. Try again.');
-      setSelected(all[0].path);
+
 
       label = 'Reviewing for defects';
       push({ label, state: 'active' });
@@ -87,6 +87,46 @@ export default function AppBuilder() {
 
   const current = files.find((f) => f.path === selected);
 
+  // Typewriter queue: each newly written file is revealed line by line.
+  const [streamingPath, setStreamingPath] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<Record<string, number>>({});
+  const queueRef = useRef<string[]>([]);
+  const seenRef = useRef<Set<string>>(new Set());
+  const viewRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!busy && !files.length) { seenRef.current.clear(); queueRef.current = []; setRevealed({}); setStreamingPath(null); }
+    files.forEach((f) => { if (!seenRef.current.has(f.path)) { seenRef.current.add(f.path); queueRef.current.push(f.path); } });
+  }, [files, busy]);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setStreamingPath((cur) => {
+        const path = cur ?? queueRef.current.shift() ?? null;
+        if (!path) return null;
+        const f = files.find((x) => x.path === path);
+        if (!f) return path;
+        if (!cur) setSelected(path);
+        const total = f.content.split('\n').length;
+        let done = false;
+        setRevealed((r) => {
+          const n = Math.min(total, (r[path] ?? 0) + Math.max(1, Math.ceil(total / 120)));
+          done = n >= total;
+          return { ...r, [path]: n };
+        });
+        return done ? null : path;
+      });
+    }, 30);
+    return () => clearInterval(t);
+  }, [files]);
+
+  const allLines = current?.content.split('\n') ?? [];
+  const shownLines = current && current.path in revealed ? allLines.slice(0, revealed[current.path]) : (current && !queueRef.current.includes(current.path) && streamingPath !== current.path ? allLines : []);
+
+  useEffect(() => {
+    if (streamingPath && streamingPath === current?.path) viewRef.current?.scrollTo({ top: viewRef.current.scrollHeight });
+  }, [shownLines.length, streamingPath, current?.path]);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="h-12 border-b border-border flex items-center gap-2 px-3">
@@ -99,7 +139,7 @@ export default function AppBuilder() {
         )}
       </header>
       <div className="flex-1 grid md:grid-cols-[340px_1fr] overflow-hidden">
-        <aside className="border-r border-border p-4 space-y-3 overflow-y-auto">
+        <aside className="border-r border-border p-4 space-y-3 overflow-y-auto flex flex-col">
           <Textarea rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)}
             placeholder="Describe the app: e.g. A booking API for a Kigali salon with customers, services and appointments" />
           <Input value={stack} onChange={(e) => setStack(e.target.value)} placeholder="Preferred stack (optional)" />
@@ -116,7 +156,7 @@ export default function AppBuilder() {
               </div>
             ))}
           </div>
-          {plan && <div className="text-xs space-y-1 border-t border-border pt-3"><p className="font-semibold">{plan.name}</p><p className="text-muted-foreground">{plan.summary}</p></div>}
+          {plan && <div className="mt-auto text-xs space-y-1 border-t border-border pt-3"><p className="font-semibold">{plan.name}</p><p className="text-muted-foreground">{plan.summary}</p></div>}
           {issues.length > 0 && (
             <div className="text-xs space-y-1 border-t border-border pt-3">
               <p className="font-semibold">Review report</p>
@@ -124,17 +164,31 @@ export default function AppBuilder() {
             </div>
           )}
         </aside>
-        <main className="flex overflow-hidden min-h-[400px]">
-          <div className="w-56 border-r border-border overflow-y-auto p-2 space-y-0.5">
+        <main className="flex overflow-hidden min-h-[400px] bg-code-bg text-code-fg">
+          <div className="w-56 border-r border-code-muted/30 overflow-y-auto p-2 space-y-0.5 hidden sm:block">
             {files.map((f) => (
               <button key={f.path} onClick={() => setSelected(f.path)}
-                className={cn('w-full text-left text-xs px-2 py-1.5 rounded flex items-center gap-1.5 break-all', selected === f.path ? 'bg-primary/10 text-primary' : 'hover:bg-muted')}>
+                className={cn('w-full text-left text-xs px-2 py-1.5 rounded flex items-center gap-1.5 break-all', selected === f.path ? 'bg-primary/20 text-primary' : 'hover:bg-code-muted/20')}>
                 <FileCode className="w-3 h-3 shrink-0" />{f.path}
+                {streamingPath === f.path && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
               </button>
             ))}
-            {!files.length && <p className="text-xs text-muted-foreground p-2">Files appear here as they are written.</p>}
+            {!files.length && <p className="text-xs text-code-muted p-2">Files appear here as they are written.</p>}
           </div>
-          <pre className="flex-1 overflow-auto p-4 text-xs font-mono bg-muted/30 whitespace-pre">{current?.content ?? ''}</pre>
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="h-9 border-b border-code-muted/30 flex items-center gap-2 px-3 text-xs font-mono">
+              {current ? <>
+                <FileCode className="w-3.5 h-3.5 text-primary" /><span>{current.path}</span>
+                {streamingPath === current.path && <span className="flex items-center gap-1 text-primary"><span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />writing…</span>}
+              </> : <span className="text-code-muted">{busy ? 'Waiting for first file…' : 'No file open'}</span>}
+            </div>
+            <div ref={viewRef} className="flex-1 overflow-auto py-3 text-xs font-mono leading-5">
+              {shownLines.map((l, i) => (
+                <div key={i} className="flex px-3"><span className="w-10 shrink-0 text-right pr-4 text-code-muted select-none">{i + 1}</span><span className="whitespace-pre">{l || ' '}</span></div>
+              ))}
+              {streamingPath === current?.path && <span className="ml-[3.25rem] inline-block w-2 h-4 bg-primary animate-pulse align-middle" />}
+            </div>
+          </div>
         </main>
       </div>
     </div>

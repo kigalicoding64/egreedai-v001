@@ -6,6 +6,9 @@
 
 @layer base {
   :root {
+    --code-bg: 222 28% 9%;
+    --code-fg: 210 30% 88%;
+    --code-muted: 218 14% 46%;
     --background: 220 20% 97%;
     --foreground: 220 20% 10%;
     --card: 0 0% 100%;
