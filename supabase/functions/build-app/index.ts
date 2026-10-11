@@ -2,6 +2,7 @@
 // PLAN → SCHEMA/API → FILES → TESTS → VALIDATE → FIX, powered by NVIDIA AI (`nvdiaapi`).
 // Returns a complete file tree the client can browse, edit and download.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { callNvidia, extractJson, getNvidiaKey } from "../_shared/nvidia.ts";
 import { QUALITY_REQUIREMENTS } from "../_shared/playbooks.ts";
 
@@ -25,8 +26,9 @@ ${QUALITY_REQUIREMENTS.map((q) => `- ${q}`).join("\n")}
 
 // Edge requests are cut at 150s; every stage must finish before this point.
 const REQUEST_BUDGET_MS = 138000;
-let requestStart = Date.now();
-const remaining = () => REQUEST_BUDGET_MS - (Date.now() - requestStart);
+// Per-request start time (requests can run concurrently in one worker).
+const reqStore = new AsyncLocalStorage<number>();
+const remaining = () => REQUEST_BUDGET_MS - (Date.now() - (reqStore.getStore() ?? Date.now()));
 
 // Streamed so long files are judged on steady progress, not one buffered wait.
 async function gateway(messages: { role: string; content: string }[], json: boolean) {
@@ -173,9 +175,10 @@ async function fixFiles(files: ProjectFile[], issues: any[], key: string) {
   return Array.isArray(parsed?.files) ? parsed!.files.filter((f) => f?.path && typeof f.content === "string") : [];
 }
 
-serve(async (req) => {
+serve((req) => reqStore.run(Date.now(), () => handle(req)));
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  requestStart = Date.now();
 
   const json = (b: unknown, status = 200) =>
     new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -216,4 +219,4 @@ serve(async (req) => {
     console.error("[build-app]", stage, (e as Error).message);
     return json({ error: (e as Error).message || "unexpected error" }, 500);
   }
-});
+}
