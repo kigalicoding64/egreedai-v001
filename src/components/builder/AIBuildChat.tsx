@@ -1,3 +1,4 @@
+import { MODERN_DESIGN_BRIEF } from '@/lib/designBrief';
 import { useState, useRef, useEffect } from 'react';
 import { Sparkles, Send, Loader2, Bot, User, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -65,6 +66,8 @@ Available component types and their props:
 
 Each component needs: id (unique like "ai-1"), type, props. Optional: children, styles.
 Use professional, realistic content. Build complete pages with proper structure.
+
+${MODERN_DESIGN_BRIEF}
 
 Current page has ${existingComponents.length} components.`;
 

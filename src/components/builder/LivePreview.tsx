@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 interface LivePreviewProps {
@@ -12,17 +12,7 @@ export function LivePreview({ html, deviceView }: LivePreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeKey, setIframeKey] = useState(0);
 
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
 
-    const doc = iframe.contentDocument;
-    if (!doc) return;
-
-    doc.open();
-    doc.write(html);
-    doc.close();
-  }, [html, iframeKey]);
 
   return (
     <div className="flex-1 overflow-auto bg-muted/30 flex justify-center p-4">
@@ -41,8 +31,9 @@ export function LivePreview({ html, deviceView }: LivePreviewProps) {
         <iframe
           key={iframeKey}
           ref={iframeRef}
+          srcDoc={html}
           className="w-full h-full border-0"
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts allow-forms allow-popups"
           title="Live Preview"
         />
       </div>
