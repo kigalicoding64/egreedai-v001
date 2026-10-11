@@ -43,8 +43,8 @@ export default function AppBuilder() {
 
       const byPath = new Map<string, PFile>();
       const targets = plan.files.map((f: any) => ({ path: f.path, purpose: f.purpose ?? '' }));
-      for (let i = 0; i < targets.length; i += 4) {
-        const batch = targets.slice(i, i + 4);
+      for (let i = 0; i < targets.length; i += 2) {
+        const batch = targets.slice(i, i + 2);
         label = `Writing ${batch.map((b: any) => b.path).join(', ')}`;
         push({ label, state: 'active' });
         const { files: out } = await call({ stage: 'files', prompt, plan, targets: batch });
