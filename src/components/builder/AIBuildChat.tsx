@@ -66,6 +66,8 @@ Available component types and their props:
 Each component needs: id (unique like "ai-1"), type, props. Optional: children, styles.
 Use professional, realistic content. Build complete pages with proper structure.
 
+${MODERN_DESIGN_BRIEF}
+
 Current page has ${existingComponents.length} components.`;
 
       const allMessages = [

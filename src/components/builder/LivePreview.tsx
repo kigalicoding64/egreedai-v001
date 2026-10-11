@@ -41,8 +41,9 @@ export function LivePreview({ html, deviceView }: LivePreviewProps) {
         <iframe
           key={iframeKey}
           ref={iframeRef}
+          srcDoc={html}
           className="w-full h-full border-0"
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts allow-forms allow-popups"
           title="Live Preview"
         />
       </div>

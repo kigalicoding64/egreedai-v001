@@ -20,7 +20,8 @@ ${QUALITY_REQUIREMENTS.map((q) => `- ${q}`).join("\n")}
 - Every file must be COMPLETE and runnable. No "...", no "// rest of code", no placeholders.
 - Prefer a simple, maintainable architecture over cleverness.
 - Validate all input server-side. Never trust client data. Never hardcode secrets — read them from environment variables.
-- Use the stack the user asked for. If they did not say, use TypeScript + React (Vite) on the front end, Node.js + Express on the API, and PostgreSQL for data.`;
+- Use the stack the user asked for. If they did not say, use TypeScript + React (Vite) on the front end, Node.js + Express on the API, and PostgreSQL for data.
+- Front-end design must feel like a modern 2026 product: one consistent visual direction, a design-token theme (CSS variables for colours, radius, shadows), Tailwind CSS, responsive mobile-first layouts, app shell with sidebar/topbar for dashboards, cards with soft shadows and 16px+ radius, loading skeletons, empty states, toast feedback, accessible labels and keyboard focus styles, and smooth subtle transitions.`;
 
 function sysWith(extra: string) { return `${ARCHITECT}\n\n${extra}`; }
 

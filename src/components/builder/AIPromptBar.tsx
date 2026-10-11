@@ -51,6 +51,9 @@ Rules:
 - Make content relevant to the user's prompt
 - Return ONLY the JSON array, no markdown or explanation
 
+${MODERN_DESIGN_BRIEF}
+
+
 ${existingComponents.length > 0 ? `The page currently has ${existingComponents.length} components. Generate new components to add or replace.` : 'Generate a complete page.'}`;
 
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llama-chat`, {
