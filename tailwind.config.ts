@@ -14,6 +14,7 @@ export default {
     },
     extend: {
       colors: {
+        code: { bg: "hsl(var(--code-bg))", fg: "hsl(var(--code-fg))", muted: "hsl(var(--code-muted))" },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
