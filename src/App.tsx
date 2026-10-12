@@ -11,6 +11,7 @@ import KnowledgeBase from "./pages/KnowledgeBase";
 import Creator from "./pages/Creator";
 
 import KinyarwandaEval from "./pages/KinyarwandaEval";
+import Admin from "./pages/Admin";
 import ModelEval from "./pages/ModelEval";
 import NotFound from "./pages/NotFound";
 import AppBuilder from "./pages/AppBuilder";
@@ -37,6 +38,7 @@ const App = () => (
           <Route path="/kinyarwanda-eval" element={<KinyarwandaEval />} />
           <Route path="/app-builder" element={<AppBuilder />} />
           <Route path="/code-lab" element={<CodeLab />} />
+          <Route path="/admin" element={<Admin />} />
           <Route path="/model-eval" element={<ModelEval />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

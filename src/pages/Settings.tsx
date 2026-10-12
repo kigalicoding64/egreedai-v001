@@ -11,10 +11,13 @@ import { useAuth } from '@/hooks/useAuth';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { SUPPORTED_LANGUAGES, Language } from '@/components/chat/LanguageSelector';
 import { toast } from 'sonner';
+import { ProfileCard } from '@/components/settings/ProfileCard';
+import { useIsCreator } from '@/hooks/useIsCreator';
 
 const Settings = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
+  const { isCreator } = useIsCreator();
   const { preferences, loading, savePreferences } = useUserPreferences();
   
   const [languageCode, setLanguageCode] = useState('en');
@@ -95,6 +98,10 @@ const Settings = () => {
       </header>
 
       <main className="max-w-2xl mx-auto p-4 space-y-6">
+        {user && <ProfileCard userId={user.id} />}
+        {isCreator && (
+          <Button variant="outline" className="w-full" onClick={() => navigate('/admin')}>Open Admin (users & Gemini keys)</Button>
+        )}
         {/* Language Preferences */}
         <Card>
           <CardHeader>
