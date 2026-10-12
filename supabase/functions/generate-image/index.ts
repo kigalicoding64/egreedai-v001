@@ -7,9 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-function getKeys(): string[] {
-  return [Deno.env.get("geminapi"), Deno.env.get("gemin11")].filter(Boolean) as string[];
-}
+import { loadGeminiKeys as getKeys } from "../_shared/geminiKeys.ts";
 
 async function generateWithGemini(prompt: string, apiKey: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`;
@@ -41,7 +39,7 @@ serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const keys = getKeys();
+    const keys = await getKeys();
     if (!keys.length) {
       return new Response(JSON.stringify({ error: "No Gemini API key configured" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },

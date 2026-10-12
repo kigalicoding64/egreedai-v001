@@ -330,6 +330,42 @@ export type Database = {
         }
         Relationships: []
       }
+      gemini_api_keys: {
+        Row: {
+          active: boolean
+          api_key: string
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string
+          last_error: string | null
+          last_used_at: string | null
+          position: number
+        }
+        Insert: {
+          active?: boolean
+          api_key: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label: string
+          last_error?: string | null
+          last_used_at?: string | null
+          position?: number
+        }
+        Update: {
+          active?: boolean
+          api_key?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string
+          last_error?: string | null
+          last_used_at?: string | null
+          position?: number
+        }
+        Relationships: []
+      }
       knowledge_documents: {
         Row: {
           content: string
@@ -403,25 +439,37 @@ export type Database = {
           avatar_url: string | null
           created_at: string
           display_name: string | null
+          full_name: string | null
           id: string
+          location: string | null
+          phone: string | null
           updated_at: string
           user_id: string
+          website: string | null
         }
         Insert: {
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null
+          full_name?: string | null
           id?: string
+          location?: string | null
+          phone?: string | null
           updated_at?: string
           user_id: string
+          website?: string | null
         }
         Update: {
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null
+          full_name?: string | null
           id?: string
+          location?: string | null
+          phone?: string | null
           updated_at?: string
           user_id?: string
+          website?: string | null
         }
         Relationships: []
       }
