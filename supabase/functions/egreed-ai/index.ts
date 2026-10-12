@@ -203,9 +203,7 @@ async function callGemini(model: string, messages: any[], apiKey: string): Promi
   return parts.map((p: any) => p?.text ?? "").join("").trim();
 }
 
-function getGeminiKeys(): string[] {
-  return [Deno.env.get("geminapi"), Deno.env.get("gemin11")].filter(Boolean) as string[];
-}
+import { loadGeminiKeys } from "../_shared/geminiKeys.ts";
 
 // ─────────────────────────────────────────────────────────────
 // Creator Intelligence: active config + top-K knowledge brain
@@ -277,7 +275,7 @@ serve(async (req) => {
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const OPENAI_KEY = Deno.env.get("openai") || Deno.env.get("openai1");
-    const GEMINI_KEYS = getGeminiKeys();
+    const GEMINI_KEYS = await loadGeminiKeys();
     const NVIDIA_KEY = getNvidiaKey();
 
     const body = await req.json();
