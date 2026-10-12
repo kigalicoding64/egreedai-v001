@@ -42,7 +42,7 @@ export function ProfileCard({ userId }: { userId: string }) {
   const save = async () => {
     if (form.website && !/^https?:\/\//i.test(form.website)) return toast.error("Website must start with http:// or https://");
     setSaving(true);
-    const payload = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v.trim().slice(0, 300) || null]));
+    const payload = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v.trim().slice(0, 300) || null])) as Partial<Record<keyof Form, string | null>>;
     const { data: existing } = await supabase.from("profiles").select("id").eq("user_id", userId).maybeSingle();
     const { error } = existing
       ? await supabase.from("profiles").update(payload).eq("user_id", userId)
