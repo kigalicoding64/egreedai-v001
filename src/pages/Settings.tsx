@@ -16,7 +16,7 @@ import { useIsCreator } from '@/hooks/useIsCreator';
 
 const Settings = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { isCreator } = useIsCreator();
   const { preferences, loading, savePreferences } = useUserPreferences();
   
@@ -30,10 +30,11 @@ const Settings = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
+    if (authLoading) return;
     if (!isAuthenticated) {
-      navigate('/auth');
+      navigate('/auth?next=/settings');
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, authLoading, navigate]);
 
   useEffect(() => {
     if (preferences) {

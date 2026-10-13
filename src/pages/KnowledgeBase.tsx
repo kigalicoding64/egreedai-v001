@@ -19,7 +19,7 @@ interface Doc {
 
 export default function KnowledgeBase() {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -28,12 +28,13 @@ export default function KnowledgeBase() {
   const [crawling, setCrawling] = useState(false);
 
   useEffect(() => {
+    if (authLoading) return;
     if (!isAuthenticated) {
-      navigate("/auth");
+      navigate("/auth?next=/knowledge");
       return;
     }
     load();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, authLoading]);
 
   const load = async () => {
     const { data } = await supabase
