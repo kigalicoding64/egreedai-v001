@@ -6,6 +6,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { callNvidia, getNvidiaKey } from "../_shared/nvidia.ts";
 import { detectTask, isEngineeringTask, playbookPrompt, PLAYBOOKS } from "../_shared/playbooks.ts";
+import { McpSession } from "../_shared/mcp.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -269,6 +270,50 @@ async function loadCreatorContext(userText: string, lovableKey: string | undefin
   return { personaExtras, knowledge };
 }
 
+// ─────────────────────────────────────────────────────────────
+// MCP tools added by admins: pick + call relevant tools, inject results
+// ─────────────────────────────────────────────────────────────
+async function runMcpTools(userText: string, lovableKey: string | undefined): Promise<string> {
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key || !lovableKey || !userText) return "";
+  try {
+    const admin = createClient(url, key);
+    const { data: servers } = await admin.from("mcp_servers").select("id,label,url,auth_header,tools").eq("active", true);
+    const usable = (servers ?? []).filter((s: any) => Array.isArray(s.tools) && s.tools.length);
+    if (!usable.length) return "";
+    const catalog = usable.flatMap((s: any) => s.tools.slice(0, 40).map((t: any) =>
+      `- server="${s.id}" tool="${t.name}": ${(t.description || "").slice(0, 200)} | input schema: ${JSON.stringify(t.inputSchema ?? {}).slice(0, 400)}`)).join("\n");
+    const pick = await callLovable("google/gemini-2.5-flash", [
+      { role: "system", content: `You decide whether external tools are needed to answer the user. Tools:\n${catalog}\n\nReply with ONLY JSON: {"calls":[{"server":"<id>","tool":"<name>","args":{...}}]} with at most 2 calls, or {"calls":[]} if no tool is clearly useful.` },
+      { role: "user", content: userText.slice(0, 4000) },
+    ], lovableKey);
+    const m = pick.match(/\{[\s\S]*\}/);
+    const calls: any[] = m ? (JSON.parse(m[0])?.calls ?? []) : [];
+    if (!calls.length) return "";
+    const results: string[] = [];
+    for (const c of calls.slice(0, 2)) {
+      const srv: any = usable.find((s: any) => s.id === c.server);
+      if (!srv || !srv.tools.some((t: any) => t.name === c.tool)) continue;
+      try {
+        const s = new McpSession(srv.url, srv.auth_header);
+        await s.init();
+        const out = await s.callTool(c.tool, c.args);
+        results.push(`[${srv.label} → ${c.tool}]\n${out}`);
+      } catch (e) {
+        console.error("[mcp] call failed", srv.label, c.tool, (e as Error).message);
+      }
+    }
+    console.log("[mcp] tools used", results.length);
+    return results.length
+      ? `\n\n--- LIVE TOOL RESULTS (use them to answer; do not mention tools) ---\n${results.join("\n\n")}\n--- END TOOL RESULTS ---\n`
+      : "";
+  } catch (e) {
+    console.error("[mcp] skipped", (e as Error).message);
+    return "";
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -293,7 +338,9 @@ serve(async (req) => {
     const engineering = body?.mode === "code" || isEngineeringTask(userText, taskKind);
     const language = det.isRw ? "Kinyarwanda" : detectLanguage(userText);
 
-    const { personaExtras, knowledge } = await loadCreatorContext(userText, LOVABLE_API_KEY);
+    const ctx = await loadCreatorContext(userText, LOVABLE_API_KEY);
+    const personaExtras = ctx.personaExtras;
+    const knowledge = ctx.knowledge + await runMcpTools(userText, LOVABLE_API_KEY);
 
     // ═══════════════ ENGINEERING PATH — NVIDIA, playbook-driven ═══════════════
     if (engineering) {
