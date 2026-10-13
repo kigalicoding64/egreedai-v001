@@ -21,11 +21,14 @@ const Auth = () => {
   const { signIn, signUp, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
+  const nextParam = new URLSearchParams(window.location.search).get('next');
+  const next = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/';
+
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/');
+      navigate(next, { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, next]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -54,12 +57,12 @@ const Auth = () => {
     if (isSignUp) {
       const { error } = await signUp(email, password, displayName);
       if (!error) {
-        navigate('/');
+        navigate(next, { replace: true });
       }
     } else {
       const { error } = await signIn(email, password);
       if (!error) {
-        navigate('/');
+        navigate(next, { replace: true });
       }
     }
     
