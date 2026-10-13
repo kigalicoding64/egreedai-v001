@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.nvidia-debug]
 verify_jwt = false
+
+[functions.mcp-admin]
+verify_jwt = false
