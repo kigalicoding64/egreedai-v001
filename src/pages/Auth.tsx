@@ -57,12 +57,12 @@ const Auth = () => {
     if (isSignUp) {
       const { error } = await signUp(email, password, displayName);
       if (!error) {
-        navigate('/');
+        navigate(next, { replace: true });
       }
     } else {
       const { error } = await signIn(email, password);
       if (!error) {
-        navigate('/');
+        navigate(next, { replace: true });
       }
     }
     

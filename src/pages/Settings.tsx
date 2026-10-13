@@ -76,7 +76,7 @@ const Settings = () => {
     }
   };
 
-  if (loading) {
+  if (loading || authLoading || !isAuthenticated) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
