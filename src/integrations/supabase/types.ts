@@ -399,6 +399,45 @@ export type Database = {
         }
         Relationships: []
       }
+      mcp_servers: {
+        Row: {
+          active: boolean
+          auth_header: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string
+          last_checked_at: string | null
+          last_error: string | null
+          tools: Json
+          url: string
+        }
+        Insert: {
+          active?: boolean
+          auth_header?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label: string
+          last_checked_at?: string | null
+          last_error?: string | null
+          tools?: Json
+          url: string
+        }
+        Update: {
+          active?: boolean
+          auth_header?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string
+          last_checked_at?: string | null
+          last_error?: string | null
+          tools?: Json
+          url?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string

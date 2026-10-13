@@ -25,7 +25,8 @@ export function useChat() {
   const [useKnowledge, setUseKnowledge] = useState<boolean>(() =>
     localStorage.getItem('egreed_use_kb') === '1'
   );
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const [loadingConversations, setLoadingConversations] = useState(true);
   const { toast } = useToast();
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -76,56 +77,63 @@ export function useChat() {
     (c) => c.id === activeConversationId
   );
 
-  // Load conversations from database when user is authenticated
+  // Remember the open chat so a reload or navigation never resets to an empty screen
   useEffect(() => {
+    if (activeConversationId) localStorage.setItem('egreed_active_chat', activeConversationId);
+  }, [activeConversationId]);
+
+  // Load conversations once auth has settled (never wipe while the session is restoring)
+  useEffect(() => {
+    if (authLoading) return;
     if (isAuthenticated && user) {
       loadConversations();
     } else {
       setConversations([]);
       setActiveConversationId(null);
+      setLoadingConversations(false);
     }
-  }, [isAuthenticated, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, isAuthenticated, user?.id]);
 
   const loadConversations = async () => {
     if (!user) return;
-    
+    setLoadingConversations(true);
     const { data: convData, error: convError } = await supabase
       .from('conversations')
-      .select('*')
+      .select('*, messages(*)')
       .eq('user_id', user.id)
       .order('updated_at', { ascending: false });
+    setLoadingConversations(false);
 
     if (convError) {
       console.error('Error loading conversations:', convError);
+      toast({ title: "Couldn't load your chats", description: 'Check your connection and refresh the page.', variant: 'destructive' });
       return;
     }
 
-    const conversationsWithMessages: Conversation[] = await Promise.all(
-      (convData || []).map(async (conv) => {
-        const { data: msgData } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('conversation_id', conv.id)
-          .order('created_at', { ascending: true });
-
-        return {
-          id: conv.id,
-          title: conv.title,
-          messages: (msgData || []).map(msg => ({
-            id: msg.id,
-            role: msg.role as 'user' | 'assistant',
-            content: msg.content,
-            timestamp: new Date(msg.created_at),
-            imageUrl: msg.image_url || undefined
-          })),
-          createdAt: new Date(conv.created_at),
-          updatedAt: new Date(conv.updated_at),
-          userId: conv.user_id
-        };
-      })
-    );
+    const conversationsWithMessages: Conversation[] = (convData || []).map((conv: any) => ({
+      id: conv.id,
+      title: conv.title,
+      messages: [...(conv.messages || [])]
+        .sort((a: any, b: any) => a.created_at.localeCompare(b.created_at))
+        .map((msg: any) => ({
+          id: msg.id,
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+          timestamp: new Date(msg.created_at),
+          imageUrl: msg.image_url || undefined,
+        })),
+      createdAt: new Date(conv.created_at),
+      updatedAt: new Date(conv.updated_at),
+      userId: conv.user_id,
+    }));
 
     setConversations(conversationsWithMessages);
+    setActiveConversationId((cur) => {
+      if (cur && conversationsWithMessages.some((c) => c.id === cur)) return cur;
+      const saved = localStorage.getItem('egreed_active_chat');
+      return saved && conversationsWithMessages.some((c) => c.id === saved) ? saved : cur;
+    });
   };
 
   const createNewChat = useCallback(async () => {
@@ -285,45 +293,53 @@ export function useChat() {
       };
 
       try {
-        // Africa-first EgreedAI brain (Lovable AI Gateway) with auto Kinyarwanda detection
+        const { data: { session } } = await supabase.auth.getSession();
         const res = await fetch(EGREED_AI_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            Authorization: `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          body: JSON.stringify({ messages: messagesForApi }),
+          body: JSON.stringify({ messages: messagesForApi, useKnowledge }),
           signal: controller.signal,
         });
 
+        let failed = false;
         if (res.status === 429) {
-          assistantContent = "I'm getting a lot of questions right now — please try again in a moment. 🙂";
+          failed = true;
+          assistantContent = "I'm getting a lot of questions right now. Please try again in a moment.";
         } else if (res.status === 402) {
-          assistantContent = "My AI credits ran out for this workspace. Please top up to keep chatting. 🌍";
+          failed = true;
+          assistantContent = "The AI credits for this workspace have run out. Please top up to keep chatting.";
         } else if (!res.ok) {
-          assistantContent = "Something went wrong on my side. Mind trying again? 🙂";
+          failed = true;
+          const err = await res.json().catch(() => null);
+          assistantContent = `I couldn't answer that (${err?.error || `error ${res.status}`}). Please try again.`;
         } else {
           const data = await res.json();
-          assistantContent = (data?.answer || "").trim() ||
-            "Hmm, I couldn't shape a clean answer for that. Try rephrasing? 🙂";
+          assistantContent = String(data?.answer || '').replace(/\n{3,}/g, '\n\n').trim();
+          if (!assistantContent) { failed = true; assistantContent = "I didn't get an answer back. Please try again."; }
         }
 
         updateLast(assistantContent);
 
-        if (isAuthenticated && user && assistantContent) {
-          await supabase.from('messages').insert({
+        if (!failed && isAuthenticated && user) {
+          const { error: saveErr } = await supabase.from('messages').insert({
             conversation_id: conversationId,
             role: 'assistant',
             content: assistantContent
           });
+          if (saveErr) console.error('Error saving reply:', saveErr);
+          await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
         }
       } catch (error) {
-        console.error('Error generating response:', error);
-        toast({
-          title: "Error",
-          description: (error as Error).message || "Something went wrong",
-          variant: "destructive"
-        });
+        if ((error as Error).name === 'AbortError') {
+          updateLast(assistantContent || '_Stopped._');
+        } else {
+          console.error('Error generating response:', error);
+          updateLast("I couldn't reach the server. Check your connection and try again.");
+        }
       } finally {
         setIsLoading(false);
         abortControllerRef.current = null;
