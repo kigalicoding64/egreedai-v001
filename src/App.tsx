@@ -29,6 +29,7 @@ const App = () => (
         <Seo />
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/chat/:chatId" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/builder" element={<Builder />} />

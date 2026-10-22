@@ -315,7 +315,13 @@ export function useChat() {
         } else if (!res.ok) {
           failed = true;
           const err = await res.json().catch(() => null);
-          assistantContent = `I couldn't answer that (${err?.error || `error ${res.status}`}). Please try again.`;
+          const raw = String(err?.error || '');
+          if (res.status === 502 && /key|gemini|openai|denied|401|403/i.test(raw)) {
+            assistantContent = "⚠️ **I can't reply right now.** The AI keys connected to EgreedAI were refused by their providers. An admin needs to replace them in **Admin → Gemini keys**. Your chat is saved — try again once the keys are fixed.";
+          } else {
+            assistantContent = `⚠️ **Something went wrong** (error ${res.status}). Your chat is saved — please try again in a moment.`;
+          }
+          console.error('Chat reply failed:', raw);
         } else {
           const data = await res.json();
           assistantContent = String(data?.answer || '').replace(/\n{3,}/g, '\n\n').trim();
