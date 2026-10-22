@@ -455,7 +455,7 @@ serve(async (req) => {
       if (!answer) {
         const fbMessages = [{ role: "system", content: engineerSystem }, ...chatHistory];
         try {
-          if (GEMINI_KEYS.length) { answer = await callGemini("gemini-2.0-flash-exp", fbMessages, GEMINI_KEYS[0]); route = "gemini"; }
+          if (GEMINI_KEYS.length) { answer = await callGemini("gemini-2.5-flash", fbMessages, GEMINI_KEYS[0]); route = "gemini"; }
           else if (OPENAI_KEY) { answer = await callOpenAI("gpt-4o-mini", fbMessages, OPENAI_KEY); route = "openai"; }
           else if (LOVABLE_API_KEY) { answer = await callLovable("google/gemini-2.5-flash", fbMessages, LOVABLE_API_KEY); route = "lovable"; }
         } catch (e) {
@@ -489,7 +489,8 @@ serve(async (req) => {
     const persona = det.isRw ? PERSONA_RW : PERSONA_EN;
     const rewriter = det.isRw ? REWRITER_RW : REWRITER_EN;
     const fullPersona = persona + personaExtras + knowledge;
-    const route = LOVABLE_API_KEY ? "lovable" : GEMINI_KEYS.length ? "gemini" : OPENAI_KEY ? "openai" : "none";
+    // Configured keys only (Gemini, then OpenAI). The workspace AI credit route is never used for chat.
+    const route = GEMINI_KEYS.length ? "gemini" : OPENAI_KEY ? "openai" : "none";
 
     console.log("[egreed-ai] chat", JSON.stringify({
       confidence: det.confidence, isKinyarwanda: det.isRw, language, taskKind, route,
@@ -508,32 +509,27 @@ serve(async (req) => {
     const tryGemini = async () => {
       let lastErr: unknown;
       for (const k of GEMINI_KEYS) {
-        try { return await callGemini("gemini-2.0-flash-exp", draftMessages, k); }
+        try { return await callGemini("gemini-2.5-flash", draftMessages, k); }
         catch (e) { lastErr = e; console.error("[egreed-ai] gemini key failed:", (e as Error).message); }
       }
       throw lastErr ?? new Error("no gemini keys");
     };
     try {
-      if (route === "lovable") draft = await callLovable("google/gemini-2.5-flash", draftMessages, LOVABLE_API_KEY!);
-      else if (route === "gemini") draft = await tryGemini();
-      else draft = await callOpenAI("gpt-4o-mini", draftMessages, OPENAI_KEY!);
+      draft = route === "gemini" ? await tryGemini() : await callOpenAI("gpt-4o-mini", draftMessages, OPENAI_KEY!);
     } catch (e) {
-      console.error("[egreed-ai] draft failed, fallback:", (e as Error).message);
-      if (GEMINI_KEYS.length) { try { draft = await tryGemini(); } catch { /* ignore */ } }
-      if (!draft && LOVABLE_API_KEY) draft = await callLovable("google/gemini-2.5-flash-lite", draftMessages, LOVABLE_API_KEY);
+      const msg = (e as Error).message || "provider error";
+      console.error(`[egreed-ai] ${route} failed:`, msg);
+      return new Response(JSON.stringify({ error: `Your ${route === "gemini" ? "Gemini" : "OpenAI"} key(s) could not answer: ${msg.slice(0, 200)}` }), {
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
     draft = sanitize(draft);
 
     let final = draft;
     if (!/```/.test(draft)) {
       try {
-        const rewritten = LOVABLE_API_KEY
-          ? await callLovable("google/gemini-2.5-flash-lite", [
-              { role: "system", content: fullPersona },
-              { role: "user", content: `${rewriter}\n\n---DRAFT---\n${draft}` },
-            ], LOVABLE_API_KEY)
-          : GEMINI_KEYS.length
-            ? await callGemini("gemini-2.0-flash-exp", [
+        const rewritten = route === "gemini"
+            ? await callGemini("gemini-2.5-flash", [
                 { role: "system", content: fullPersona },
                 { role: "user", content: `${rewriter}\n\n---DRAFT---\n${draft}` },
               ], GEMINI_KEYS[0])
