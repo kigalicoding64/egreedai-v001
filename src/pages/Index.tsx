@@ -29,6 +29,7 @@ const Index = () => {
     selectModel,
     useKnowledge,
     toggleKnowledge,
+    loadingConversations,
   } = useChat();
 
   useKeyboardShortcuts({
@@ -79,6 +80,7 @@ const Index = () => {
         onSelectModel={selectModel}
         useKnowledge={useKnowledge}
         onToggleKnowledge={toggleKnowledge}
+        loadingConversations={loadingConversations}
       />
     </div>
   );
