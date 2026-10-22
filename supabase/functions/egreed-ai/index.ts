@@ -457,7 +457,6 @@ serve(async (req) => {
         try {
           if (GEMINI_KEYS.length) { answer = await callGemini("gemini-2.5-flash", fbMessages, GEMINI_KEYS[0]); route = "gemini"; }
           else if (OPENAI_KEY) { answer = await callOpenAI("gpt-4o-mini", fbMessages, OPENAI_KEY); route = "openai"; }
-          else if (LOVABLE_API_KEY) { answer = await callLovable("google/gemini-2.5-flash", fbMessages, LOVABLE_API_KEY); route = "lovable"; }
         } catch (e) {
           console.error("[egreed-ai] engineering fallback failed:", (e as Error).message);
         }
