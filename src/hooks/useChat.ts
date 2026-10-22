@@ -513,6 +513,7 @@ export function useChat() {
     stopGeneration,
     performWebSearch,
     modelId,
+    loadingConversations,
     selectModel,
     useKnowledge,
     toggleKnowledge,

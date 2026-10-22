@@ -57,7 +57,8 @@ export function ChatArea({
   onSelectModel,
   useKnowledge = false,
   onToggleKnowledge,
-}: ChatAreaProps) {
+  loadingConversations = false,
+}: ChatAreaProps & { loadingConversations?: boolean }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
@@ -218,7 +219,9 @@ export function ChatArea({
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {messages.length === 0 ? (
+        {messages.length === 0 && loadingConversations ? (
+          <div className="h-full grid place-items-center text-sm text-muted-foreground">Loading your chats…</div>
+        ) : messages.length === 0 ? (
           <WelcomeScreen onPromptClick={onSendMessage} />
         ) : (
           <div className="max-w-4xl mx-auto py-6 px-4 space-y-6">

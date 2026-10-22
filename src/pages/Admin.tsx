@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
+import { McpServersPanel } from "@/components/admin/McpServersPanel";
 
 type Profile = { user_id: string; full_name: string | null; display_name: string | null; phone: string | null; location: string | null; website: string | null; avatar_url: string | null; created_at: string };
 type Key = { id: string; label: string; active: boolean; position: number; last_used_at: string | null; last_error: string | null; created_at: string };
@@ -63,6 +64,7 @@ export default function Admin() {
           <TabsList>
             <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Users ({profiles.length})</TabsTrigger>
             <TabsTrigger value="keys"><KeyRound className="w-4 h-4 mr-2" />Gemini keys</TabsTrigger>
+            <TabsTrigger value="mcp">MCP tools</TabsTrigger>
           </TabsList>
           <TabsContent value="users" className="space-y-3 mt-4">
             <Input placeholder="Search people…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -104,6 +106,7 @@ export default function Admin() {
             ))}
             {!keys.length && <p className="text-sm text-muted-foreground">No extra keys yet.</p>}
           </TabsContent>
+          <TabsContent value="mcp" className="mt-4"><McpServersPanel /></TabsContent>
         </Tabs>
       </main>
     </div>
