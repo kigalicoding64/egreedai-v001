@@ -505,20 +505,37 @@ serve(async (req) => {
     const draftMessages = [{ role: "system", content: fullPersona }, ...messages];
 
     let draft = "";
+    let usedRoute = route;
+    let goodGeminiKey = "";
+    const OPENAI_KEYS = [Deno.env.get("openai"), Deno.env.get("openai1")].filter(Boolean) as string[];
     const tryGemini = async () => {
       let lastErr: unknown;
       for (const k of GEMINI_KEYS) {
-        try { return await callGemini("gemini-3.8-flash", draftMessages, k); }
+        try { const t = await callGemini("gemini-3.8-flash", draftMessages, k); goodGeminiKey = k; return t; }
         catch (e) { lastErr = e; console.error("[egreed-ai] gemini key failed:", (e as Error).message); }
       }
       throw lastErr ?? new Error("no gemini keys");
     };
-    try {
-      draft = route === "gemini" ? await tryGemini() : await callOpenAI("gpt-4o-mini", draftMessages, OPENAI_KEY!);
-    } catch (e) {
-      const msg = (e as Error).message || "provider error";
-      console.error(`[egreed-ai] ${route} failed:`, msg);
-      return new Response(JSON.stringify({ error: `Your ${route === "gemini" ? "Gemini" : "OpenAI"} key(s) could not answer: ${msg.slice(0, 200)}` }), {
+    const tryOpenAI = async () => {
+      let lastErr: unknown;
+      for (const k of OPENAI_KEYS) {
+        try { return await callOpenAI("gpt-4o-mini", draftMessages, k); }
+        catch (e) { lastErr = e; console.error("[egreed-ai] openai key failed:", (e as Error).message); }
+      }
+      throw lastErr ?? new Error("no openai keys");
+    };
+    // Only your own configured keys: every Gemini key, then every OpenAI key. Never workspace credits.
+    const errors: string[] = [];
+    if (GEMINI_KEYS.length) {
+      try { draft = await tryGemini(); usedRoute = "gemini"; } catch (e) { errors.push(`Gemini: ${(e as Error).message}`); }
+    }
+    if (!draft && OPENAI_KEYS.length) {
+      try { draft = await tryOpenAI(); usedRoute = "openai"; } catch (e) { errors.push(`OpenAI: ${(e as Error).message}`); }
+    }
+    if (!draft) {
+      const msg = errors.join(" | ") || "no provider answered";
+      console.error("[egreed-ai] all configured keys failed:", msg);
+      return new Response(JSON.stringify({ error: `None of your AI keys could answer. ${msg.slice(0, 400)}` }), {
         status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -527,11 +544,11 @@ serve(async (req) => {
     let final = draft;
     if (!/```/.test(draft)) {
       try {
-        const rewritten = route === "gemini"
+        const rewritten = usedRoute === "gemini" && goodGeminiKey
             ? await callGemini("gemini-3.8-flash", [
                 { role: "system", content: fullPersona },
                 { role: "user", content: `${rewriter}\n\n---DRAFT---\n${draft}` },
-              ], GEMINI_KEYS[0])
+              ], goodGeminiKey)
             : "";
         if (rewritten && rewritten.trim().length > 10) final = rewritten;
       } catch (e) {
@@ -541,7 +558,7 @@ serve(async (req) => {
 
     final = sanitize(final);
 
-    return new Response(JSON.stringify({ success: true, answer: final, route, taskKind, language }), {
+    return new Response(JSON.stringify({ success: true, answer: final, route: usedRoute, taskKind, language }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
