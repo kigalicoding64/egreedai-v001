@@ -455,7 +455,7 @@ serve(async (req) => {
       if (!answer) {
         const fbMessages = [{ role: "system", content: engineerSystem }, ...chatHistory];
         try {
-          if (GEMINI_KEYS.length) { answer = await callGemini("gemini-2.5-flash", fbMessages, GEMINI_KEYS[0]); route = "gemini"; }
+          if (GEMINI_KEYS.length) { answer = await callGemini("gemini-3.8-flash", fbMessages, GEMINI_KEYS[0]); route = "gemini"; }
           else if (OPENAI_KEY) { answer = await callOpenAI("gpt-4o-mini", fbMessages, OPENAI_KEY); route = "openai"; }
         } catch (e) {
           console.error("[egreed-ai] engineering fallback failed:", (e as Error).message);
@@ -508,7 +508,7 @@ serve(async (req) => {
     const tryGemini = async () => {
       let lastErr: unknown;
       for (const k of GEMINI_KEYS) {
-        try { return await callGemini("gemini-2.5-flash", draftMessages, k); }
+        try { return await callGemini("gemini-3.8-flash", draftMessages, k); }
         catch (e) { lastErr = e; console.error("[egreed-ai] gemini key failed:", (e as Error).message); }
       }
       throw lastErr ?? new Error("no gemini keys");
@@ -528,7 +528,7 @@ serve(async (req) => {
     if (!/```/.test(draft)) {
       try {
         const rewritten = route === "gemini"
-            ? await callGemini("gemini-2.5-flash", [
+            ? await callGemini("gemini-3.8-flash", [
                 { role: "system", content: fullPersona },
                 { role: "user", content: `${rewriter}\n\n---DRAFT---\n${draft}` },
               ], GEMINI_KEYS[0])
