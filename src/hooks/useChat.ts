@@ -14,9 +14,9 @@ const generateTitle = (content: string) => {
 const WEB_SEARCH_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/web-search`;
 const EGREED_AI_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/egreed-ai`;
 
-export function useChat() {
+export function useChat(onConversationCreated?: (id: string) => void, initialChatId: string | null = null) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(initialChatId);
   const [isLoading, setIsLoading] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [modelId, setModelId] = useState<string>(() =>
@@ -27,6 +27,7 @@ export function useChat() {
   );
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [loadingConversations, setLoadingConversations] = useState(true);
+  const [conversationLoadError, setConversationLoadError] = useState(false);
   const { toast } = useToast();
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -77,11 +78,6 @@ export function useChat() {
     (c) => c.id === activeConversationId
   );
 
-  // Remember the open chat so a reload or navigation never resets to an empty screen
-  useEffect(() => {
-    if (activeConversationId) localStorage.setItem('egreed_active_chat', activeConversationId);
-  }, [activeConversationId]);
-
   // Load conversations once auth has settled (never wipe while the session is restoring)
   useEffect(() => {
     if (authLoading) return;
@@ -98,6 +94,7 @@ export function useChat() {
   const loadConversations = async () => {
     if (!user) return;
     setLoadingConversations(true);
+    setConversationLoadError(false);
     const { data: convData, error: convError } = await supabase
       .from('conversations')
       .select('*, messages(*)')
@@ -106,6 +103,7 @@ export function useChat() {
     setLoadingConversations(false);
 
     if (convError) {
+      setConversationLoadError(true);
       console.error('Error loading conversations:', convError);
       toast({ title: "Couldn't load your chats", description: 'Check your connection and refresh the page.', variant: 'destructive' });
       return;
@@ -129,11 +127,6 @@ export function useChat() {
     }));
 
     setConversations(conversationsWithMessages);
-    setActiveConversationId((cur) => {
-      if (cur && conversationsWithMessages.some((c) => c.id === cur)) return cur;
-      const saved = localStorage.getItem('egreed_active_chat');
-      return saved && conversationsWithMessages.some((c) => c.id === saved) ? saved : cur;
-    });
   };
 
   const createNewChat = useCallback(async () => {
@@ -157,6 +150,8 @@ export function useChat() {
 
       if (error) {
         console.error('Error creating conversation:', error);
+        toast({ title: "Couldn't create your chat", description: 'Please try again.', variant: 'destructive' });
+        return;
       } else if (data) {
         newConversation.id = data.id;
       }
@@ -164,22 +159,28 @@ export function useChat() {
 
     setConversations((prev) => [newConversation, ...prev]);
     setActiveConversationId(newConversation.id);
-  }, [isAuthenticated, user]);
+    onConversationCreated?.(newConversation.id);
+  }, [isAuthenticated, user, toast, onConversationCreated]);
 
-  const selectConversation = useCallback((id: string) => {
+  const selectConversation = useCallback((id: string | null) => {
     setActiveConversationId(id);
   }, []);
 
   const deleteConversation = useCallback(async (id: string) => {
     if (isAuthenticated && user) {
-      await supabase.from('conversations').delete().eq('id', id);
+      const { error } = await supabase.from('conversations').delete().eq('id', id);
+      if (error) {
+        toast({ title: "Couldn't delete your chat", description: 'Please try again.', variant: 'destructive' });
+        return false;
+      }
     }
     
     setConversations((prev) => prev.filter((c) => c.id !== id));
     if (activeConversationId === id) {
       setActiveConversationId(null);
     }
-  }, [activeConversationId, isAuthenticated, user]);
+    return true;
+  }, [activeConversationId, isAuthenticated, user, toast]);
 
   const sendMessage = useCallback(
     async (content: string, imageUrl?: string) => {
@@ -207,6 +208,8 @@ export function useChat() {
 
           if (error) {
             console.error('Error creating conversation:', error);
+            toast({ title: "Couldn't save your chat", description: 'Please try again.', variant: 'destructive' });
+            return;
           } else if (data) {
             newConversation.id = data.id;
           }
@@ -215,6 +218,7 @@ export function useChat() {
         setConversations((prev) => [newConversation, ...prev]);
         conversationId = newConversation.id;
         setActiveConversationId(conversationId);
+        onConversationCreated?.(conversationId);
       }
 
       // Add user message
@@ -351,7 +355,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [activeConversationId, conversations, isAuthenticated, user, toast, modelId, useKnowledge]
+    [activeConversationId, conversations, isAuthenticated, user, toast, modelId, useKnowledge, onConversationCreated]
   );
 
   const generateImage = useCallback(async (prompt: string) => {
@@ -379,6 +383,8 @@ export function useChat() {
 
         if (error) {
           console.error('Error creating conversation:', error);
+          toast({ title: "Couldn't save your chat", description: 'Please try again.', variant: 'destructive' });
+          return;
         } else if (data) {
           newConversation.id = data.id;
         }
@@ -387,6 +393,7 @@ export function useChat() {
       setConversations((prev) => [newConversation, ...prev]);
       conversationId = newConversation.id;
       setActiveConversationId(conversationId);
+      onConversationCreated?.(conversationId);
     }
 
     // Add user message
@@ -459,7 +466,7 @@ export function useChat() {
     } finally {
       setIsLoading(false);
     }
-  }, [activeConversationId, isAuthenticated, user, toast]);
+  }, [activeConversationId, isAuthenticated, user, toast, onConversationCreated]);
 
   const uploadFile = useCallback(async (file: File): Promise<string | null> => {
     if (!isAuthenticated || !user) {
@@ -520,6 +527,8 @@ export function useChat() {
     performWebSearch,
     modelId,
     loadingConversations,
+    conversationLoadError,
+    retryLoadConversations: loadConversations,
     selectModel,
     useKnowledge,
     toggleKnowledge,
