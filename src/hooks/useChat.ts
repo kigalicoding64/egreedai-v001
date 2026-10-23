@@ -278,6 +278,11 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
       setIsLoading(true);
       const controller = new AbortController();
       abortControllerRef.current = controller;
+      let timedOut = false;
+      const replyTimeout = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 60_000);
 
       let assistantContent = '';
       const aiMessageId = generateId();
@@ -345,12 +350,13 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
         }
       } catch (error) {
         if ((error as Error).name === 'AbortError') {
-          updateLast(assistantContent || '_Stopped._');
+          updateLast(timedOut ? "The reply took too long. Your message is saved — please try again." : assistantContent || '_Stopped._');
         } else {
           console.error('Error generating response:', error);
           updateLast("I couldn't reach the server. Check your connection and try again.");
         }
       } finally {
+        window.clearTimeout(replyTimeout);
         setIsLoading(false);
         abortControllerRef.current = null;
       }
