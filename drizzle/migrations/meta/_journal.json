@@ -15,6 +15,13 @@
       "when": 1791851778428,
       "tag": "0001_migration",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792963840941,
+      "tag": "0002_chat_provider_access_state",
+      "breakpoints": true
     }
   ]
 }

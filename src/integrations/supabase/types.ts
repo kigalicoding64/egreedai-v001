@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      chat_provider_access_state: {
+        Row: {
+          denied: boolean
+          provider: string
+          reason: string
+          updated_at: string
+        }
+        Insert: {
+          denied?: boolean
+          provider: string
+          reason?: string
+          updated_at?: string
+        }
+        Update: {
+          denied?: boolean
+          provider?: string
+          reason?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
           created_at: string
