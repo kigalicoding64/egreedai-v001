@@ -30,6 +30,8 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
   const [conversationLoadError, setConversationLoadError] = useState(false);
   const { toast } = useToast();
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sendingRef = useRef(false);
+  const transientRepliesRef = useRef(new Set<string>());
 
   const selectModel = useCallback((id: string) => {
     setModelId(id);
@@ -184,6 +186,10 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
 
   const sendMessage = useCallback(
     async (content: string, imageUrl?: string) => {
+      if (sendingRef.current || !content.trim()) return;
+      sendingRef.current = true;
+      setIsLoading(true);
+      try {
       let conversationId = activeConversationId;
 
       // Create new conversation if none exists
@@ -232,12 +238,16 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
 
       // Save user message to database
       if (isAuthenticated && user) {
-        await supabase.from('messages').insert({
+        const { error: messageError } = await supabase.from('messages').insert({
           conversation_id: conversationId,
           role: 'user',
           content,
           image_url: imageUrl
         });
+        if (messageError) {
+          toast({ title: "Couldn't save your message", description: 'No AI request was sent. Please try again.', variant: 'destructive' });
+          return;
+        }
 
         // Update conversation title if first message
         const conv = conversations.find(c => c.id === conversationId);
@@ -267,14 +277,14 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
       // Get conversation messages for context
       const currentConv = conversations.find(c => c.id === conversationId);
       const messagesForApi = [
-        ...(currentConv?.messages || []).map(m => ({
+        ...(currentConv?.messages || []).filter(m => !transientRepliesRef.current.has(m.id)).map(m => ({
           role: m.role,
           content: m.content
         })),
         { role: 'user' as const, content }
       ];
 
-      // LLAMA DISABLED — search-first mode. Always try web search; fall back to a friendly canned reply.
+      // User message is saved before the bounded AI request starts.
       setIsLoading(true);
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -286,6 +296,7 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
 
       let assistantContent = '';
       const aiMessageId = generateId();
+      transientRepliesRef.current.add(aiMessageId);
 
       setConversations((prev) =>
         prev.map((c) => c.id === conversationId
@@ -296,7 +307,7 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
       const updateLast = (text: string) => {
         setConversations((prev) =>
           prev.map((c) => c.id === conversationId
-            ? { ...c, messages: c.messages.map((m, i) => i === c.messages.length - 1 ? { ...m, content: text } : m), updatedAt: new Date() }
+            ? { ...c, messages: c.messages.map((m) => m.id === aiMessageId ? { ...m, content: text } : m), updatedAt: new Date() }
             : c)
         );
       };
@@ -315,29 +326,19 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
         });
 
         let failed = false;
-        if (res.status === 429) {
-          failed = true;
-          assistantContent = "I'm getting a lot of questions right now. Please try again in a moment.";
-        } else if (res.status === 402) {
-          failed = true;
-          assistantContent = "The AI credits for this workspace have run out. Please top up to keep chatting.";
-        } else if (!res.ok) {
+        if (!res.ok) {
           failed = true;
           const err = await res.json().catch(() => null);
-          const raw = String(err?.error || '');
-          if (res.status === 502 && /key|gemini|openai|denied|401|403/i.test(raw)) {
-            assistantContent = "⚠️ **I can't reply right now.** The AI keys connected to EgreedAI were refused by their providers. An admin needs to replace them in **Admin → Gemini keys**. Your chat is saved — try again once the keys are fixed.";
-          } else {
-            assistantContent = `⚠️ **Something went wrong** (error ${res.status}). Your chat is saved — please try again in a moment.`;
-          }
-          console.error('Chat reply failed:', raw);
+          const reason = typeof err?.error === 'string' ? err.error : "I couldn't complete the reply. Please try again.";
+          assistantContent = `${reason} ${isAuthenticated ? 'Your message is saved.' : 'Your message remains in this tab.'}`;
         } else {
           const data = await res.json();
-          assistantContent = String(data?.answer || '').replace(/\n{3,}/g, '\n\n').trim();
+          assistantContent = (typeof data?.answer === 'string' ? data.answer : '').replace(/\n{3,}/g, '\n\n').trim();
           if (!assistantContent) { failed = true; assistantContent = "I didn't get an answer back. Please try again."; }
         }
 
         updateLast(assistantContent);
+        if (!failed && !isAuthenticated) transientRepliesRef.current.delete(aiMessageId);
 
         if (!failed && isAuthenticated && user) {
           const { error: saveErr } = await supabase.from('messages').insert({
@@ -345,7 +346,11 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
             role: 'assistant',
             content: assistantContent
           });
-          if (saveErr) console.error('Error saving reply:', saveErr);
+          if (saveErr) {
+            toast({ title: "Couldn't save the reply", description: 'Your message is saved, but this reply is only in this tab. Copy it before leaving.', variant: 'destructive' });
+          } else {
+            transientRepliesRef.current.delete(aiMessageId);
+          }
           await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
         }
       } catch (error) {
@@ -359,6 +364,12 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
         window.clearTimeout(replyTimeout);
         setIsLoading(false);
         abortControllerRef.current = null;
+      }
+      } catch {
+        toast({ title: "Couldn't complete your message", description: 'Please check your connection and try again.', variant: 'destructive' });
+      } finally {
+        sendingRef.current = false;
+        setIsLoading(false);
       }
     },
     [activeConversationId, conversations, isAuthenticated, user, toast, modelId, useKnowledge, onConversationCreated]
@@ -514,7 +525,6 @@ export function useChat(onConversationCreated?: (id: string) => void, initialCha
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    setIsLoading(false);
   }, []);
 
   return {

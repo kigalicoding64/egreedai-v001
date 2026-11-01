@@ -24,7 +24,8 @@ export async function requestReply(
     contents: messages.filter(m => m.role !== 'system').map(m => ({
       role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }],
     })),
-  } : { model: 'gpt-4o-mini', messages };
+  generationConfig: { maxOutputTokens: 4096 },
+  } : { model: 'gpt-4o-mini', messages, max_tokens: 4096 };
   const response = await request(url, {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', ...(gemini ? { 'x-goog-api-key': key } : { Authorization: `Bearer ${key}` }) },
@@ -37,7 +38,7 @@ export async function requestReply(
     const denied = response.status === 403;
     const message = denied
       ? /project has been denied access/i.test(reason)
-        ? 'Your project has been denied access. Please contact support.'
+        ? 'The configured AI project is blocked. An admin must restore its access before chat can resume.'
         : 'The configured provider denied access. An admin must restore access before chat can resume.'
       : response.status === 401 ? 'The configured provider rejected its API key. An admin must replace it.'
       : response.status === 429 ? 'The configured provider is rate limiting requests. Please wait before sending a new message.'
@@ -50,6 +51,8 @@ export async function requestReply(
       ['SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED_CONTENT'].includes(data?.candidates?.[0]?.finishReason)) {
     throw new ProviderError(422, 'The configured provider declined this request.');
   }
+  const finish = gemini ? data?.candidates?.[0]?.finishReason : data?.choices?.[0]?.finish_reason;
+  if (finish === 'MAX_TOKENS' || finish === 'length') throw new ProviderError(422, 'The reply exceeded the output limit. Please ask a smaller question.');
   const answer = gemini
     ? (data?.candidates?.[0]?.content?.parts ?? []).filter((p: { thought?: boolean }) => !p.thought).map((p: { text?: string }) => p.text ?? '').join('')
     : data?.choices?.[0]?.message?.content;
