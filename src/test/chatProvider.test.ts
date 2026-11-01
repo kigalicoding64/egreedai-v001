@@ -26,9 +26,9 @@ describe('configured provider only', () => {
   });
   it('never exposes rejected key payloads', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ error: { message: 'private-key-content' } }), { status: 401 }));
-    try { await requestReply('openai', 'configured', [], new AbortController().signal, request); } catch (error) {
-      expect((error as Error).message).not.toContain('private-key-content');
-      expect(error).toMatchObject({ status: 401 });
-    }
+    const outcome = await requestReply('openai', 'configured', [], new AbortController().signal, request).catch(error => error);
+    expect(outcome).toBeInstanceOf(ProviderError);
+    expect(outcome.message).not.toContain('private-key-content');
+    expect(outcome).toMatchObject({ status: 401 });
   });
 });
