@@ -1,3 +1,5 @@
 # Project rules
 - Chat selection follows the URL; explicit chat actions navigate rather than synchronizing two competing routing effects, so refresh and browser history remain stable.
 - Conversation loading errors are separate from missing conversations, so connection failures do not appear as deleted chats.
+- Chat uses one selected configured key and one bounded provider request for both coding and everyday replies; no rewrite, tool-picker, embedding gateway, or alternate-provider retry may bypass that boundary.
+- Save user messages before requesting replies; transient failure messages never enter saved history or subsequent AI context, and overlapping sends are blocked to avoid duplicate messages.
