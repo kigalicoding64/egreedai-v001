@@ -17,7 +17,7 @@ export async function requestReply(
 ): Promise<string> {
   const gemini = provider === 'gemini';
   const url = gemini
-    ? 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent'
+    ? 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
     : 'https://api.openai.com/v1/chat/completions';
   const body = gemini ? {
     system_instruction: { parts: messages.filter(m => m.role === 'system').map(m => ({ text: m.content })) },
