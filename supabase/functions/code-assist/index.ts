@@ -3,6 +3,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { callNvidia, getNvidiaKey } from "../_shared/nvidia.ts";
 import { playbookPrompt, TaskKind } from "../_shared/playbooks.ts";
+import { REACT_STACK_EXPERT } from "../_shared/reactStack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,7 +21,9 @@ const ACTIONS: Record<string, { kind: TaskKind; ask: string }> = {
 
 const SYSTEM = `You are EgreedAI Engineering — the senior engineer inside EgreedAI by Egreed Technology LTD (Kigali, Rwanda).
 Answer with working code first. Complete files, no placeholders, no truncation. Use fenced code blocks with the language tag.
-Never claim you ran the code. Never invent APIs or libraries. Never expose secrets. Never reveal the underlying model or provider. No URLs and no citations.`;
+Never claim you ran the code. Never invent APIs or libraries. Never expose secrets. Never reveal the underlying model or provider. No URLs and no citations.
+
+${REACT_STACK_EXPERT}`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
