@@ -1,4 +1,5 @@
 import { MODERN_DESIGN_BRIEF } from '@/lib/designBrief';
+import { REACT_STACK_EXPERT } from '@/lib/reactStackExpert';
 import { useState, useRef, useEffect } from 'react';
 import { Sparkles, Send, Loader2, Bot, User, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -68,6 +69,9 @@ Each component needs: id (unique like "ai-1"), type, props. Optional: children, 
 Use professional, realistic content. Build complete pages with proper structure.
 
 ${MODERN_DESIGN_BRIEF}
+
+Pages you design are exported as React + Tailwind CSS + Vite code, so choose structures and styles that map cleanly to it.
+${REACT_STACK_EXPERT}
 
 Current page has ${existingComponents.length} components.`;
 
