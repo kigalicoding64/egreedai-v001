@@ -1,4 +1,5 @@
 import { MODERN_DESIGN_BRIEF } from '@/lib/designBrief';
+import { REACT_STACK_EXPERT } from '@/lib/reactStackExpert';
 import { useState } from 'react';
 import { Sparkles, Loader2, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,9 @@ Rules:
 - Return ONLY the JSON array, no markdown or explanation
 
 ${MODERN_DESIGN_BRIEF}
+
+Pages you design are exported as React + Tailwind CSS + Vite code, so choose structures and styles that map cleanly to it.
+${REACT_STACK_EXPERT}
 
 
 ${existingComponents.length > 0 ? `The page currently has ${existingComponents.length} components. Generate new components to add or replace.` : 'Generate a complete page.'}`;

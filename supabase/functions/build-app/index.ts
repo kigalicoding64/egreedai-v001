@@ -5,6 +5,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { callNvidia, extractJson, getNvidiaKey } from "../_shared/nvidia.ts";
 import { QUALITY_REQUIREMENTS } from "../_shared/playbooks.ts";
+import { REACT_STACK_EXPERT } from "../_shared/reactStack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,7 +23,9 @@ ${QUALITY_REQUIREMENTS.map((q) => `- ${q}`).join("\n")}
 - Prefer a simple, maintainable architecture over cleverness.
 - Validate all input server-side. Never trust client data. Never hardcode secrets — read them from environment variables.
 - Use the stack the user asked for. If they did not say, use TypeScript + React (Vite) on the front end, Node.js + Express on the API, and PostgreSQL for data.
-- Front-end design must feel like a modern 2026 product: one consistent visual direction, a design-token theme (CSS variables for colours, radius, shadows), Tailwind CSS, responsive mobile-first layouts, app shell with sidebar/topbar for dashboards, cards with soft shadows and 16px+ radius, loading skeletons, empty states, toast feedback, accessible labels and keyboard focus styles, and smooth subtle transitions.`;
+- Front-end design must feel like a modern 2026 product: one consistent visual direction, a design-token theme (CSS variables for colours, radius, shadows), Tailwind CSS, responsive mobile-first layouts, app shell with sidebar/topbar for dashboards, cards with soft shadows and 16px+ radius, loading skeletons, empty states, toast feedback, accessible labels and keyboard focus styles, and smooth subtle transitions.
+
+${REACT_STACK_EXPERT}`;
 
 // Edge requests are cut at 150s; every stage must finish before this point.
 const REQUEST_BUDGET_MS = 138000;
