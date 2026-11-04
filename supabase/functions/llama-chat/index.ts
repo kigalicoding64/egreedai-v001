@@ -1,98 +1,49 @@
+// Builder AI endpoint. Uses the same single configured key as chat (one bounded
+// request, no alternate model/provider retry) and returns an OpenAI-style SSE
+// stream so the builder clients parse it unchanged.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getNvidiaKey } from "../_shared/nvidia.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { z } from "npm:zod@3";
+import { loadGeminiKeys } from "../_shared/geminiKeys.ts";
+import { ProviderError, requestReply, selectProvider } from "../_shared/provider.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+const BodySchema = z.object({
+  messages: z.array(z.object({
+    role: z.enum(["system", "user", "assistant"]),
+    content: z.string().min(1).max(60_000),
+  })).min(1).max(40),
+  stream: z.boolean().optional(),
+});
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
   try {
-    const LLAMA_STACK_URL = Deno.env.get("LLAMA_STACK_URL");
-    const LLAMA_STACK_API_KEY = Deno.env.get("LLAMA_STACK_API_KEY");
-    const LLAMA_STACK_MODEL = Deno.env.get("LLAMA_STACK_MODEL") || "llama3.1";
+    const parsed = BodySchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return json({ error: "Send a valid messages array." }, 400);
+    const { messages, stream = true } = parsed.data;
 
-    const { messages, stream = true } = await req.json();
-    if (!messages || !Array.isArray(messages)) {
-      throw new Error("messages array is required");
-    }
+    const selected = selectProvider(await loadGeminiKeys(controller.signal), Deno.env.get("openai") || Deno.env.get("openai1"));
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: access } = await admin.from("chat_provider_access_state")
+      .select("denied").eq("provider", selected.provider).maybeSingle();
+    if (access?.denied) return json({ error: "The configured AI connection is blocked. An admin must restore access. No other provider was used." }, 403);
 
-    // No self-hosted Llama configured → serve the request with NVIDIA AI
-    // (OpenAI-compatible stream, so existing clients parse it unchanged).
-    if (!LLAMA_STACK_URL) {
-      const key = getNvidiaKey();
-      if (!key) {
-        return new Response(JSON.stringify({ error: "AI is not configured.", notConfigured: true }),
-          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      const models = ["openai/gpt-oss-20b", "nvidia/nemotron-3.5-lightning-30b-a3b", "nvidia/nemotron-3-super-120b-a12b"];
-      let lastErr = "";
-      for (const model of models) {
-        const msgs = model.startsWith("nvidia/nemotron")
-          ? [{ role: "system", content: "detailed thinking off" }, ...messages]
-          : messages;
-        const r = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-          body: JSON.stringify({ model, messages: msgs, stream, temperature: 0.3, max_tokens: 6000 }),
-        }).catch((e) => { lastErr = String(e); return null; });
-        if (r && r.ok && r.body) {
-          return new Response(r.body, {
-            headers: { ...corsHeaders, "Content-Type": stream ? "text/event-stream" : "application/json" },
-          });
-        }
-        if (r) lastErr = `${r.status} ${await r.text().catch(() => "")}`.slice(0, 300);
-        console.error("[llama-chat] nvidia fallback failed", model, lastErr);
-      }
-      return new Response(JSON.stringify({ error: "AI generation is temporarily unavailable. Please try again." }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (LLAMA_STACK_API_KEY) {
-      headers["Authorization"] = `Bearer ${LLAMA_STACK_API_KEY}`;
-    }
-
-    const body = JSON.stringify({
-      model: LLAMA_STACK_MODEL,
-      messages,
-      stream,
-    });
-
-    const response = await fetch(LLAMA_STACK_URL, {
-      method: "POST",
-      headers,
-      body,
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error("Llama stack error:", response.status, text);
-      return new Response(
-        JSON.stringify({ error: `Llama stack returned ${response.status}: ${text}` }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    if (stream && response.body) {
-      return new Response(response.body, {
-        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
-      });
-    }
-
-    const data = await response.json();
-    return new Response(JSON.stringify(data), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (e) {
-    console.error("llama-chat error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    const answer = await requestReply(selected.provider, selected.key, messages, controller.signal, fetch, 16384);
+    if (!stream) return json({ choices: [{ message: { role: "assistant", content: answer } }] });
+    const sse = `data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\ndata: [DONE]\n\n`;
+    return new Response(sse, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
+  } catch (error) {
+    if (controller.signal.aborted) return json({ error: "The AI took too long. Please try again. No other provider was used." }, 504);
+    if (error instanceof ProviderError) return json({ error: error.message }, error.status);
+    console.error("[llama-chat] failed", error instanceof Error ? error.message : error);
+    return json({ error: "AI generation failed. No other provider was used." }, 502);
+  } finally {
+    clearTimeout(timeout);
   }
 });
