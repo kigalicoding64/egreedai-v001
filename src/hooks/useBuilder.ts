@@ -271,3 +271,28 @@ ${body}
     exportToHTML,
   };
 }
+
+// AI replies sometimes wrap the list ({ components: [...] }) or return one section.
+// Accept those shapes, keep only real sections, and make sure every one has an id.
+export function normalizeAIComponents(input: unknown): BuilderComponent[] {
+  let value: unknown = input;
+  for (let i = 0; i < 3 && value && !Array.isArray(value) && typeof value === 'object'; i++) {
+    const obj = value as Record<string, unknown>;
+    const inner = obj.components ?? obj.sections ?? obj.page ?? obj.children;
+    if (inner === undefined) break;
+    value = inner;
+  }
+  if (value && !Array.isArray(value) && typeof value === 'object' && 'type' in value) value = [value];
+  if (!Array.isArray(value)) return [];
+  let n = 0;
+  const fix = (items: unknown[]): BuilderComponent[] => items
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object' && typeof (c as { type?: unknown }).type === 'string')
+    .map((c) => ({
+      ...c,
+      id: typeof c.id === 'string' && c.id ? c.id : `ai-${Date.now()}-${n++}`,
+      type: c.type,
+      props: c.props && typeof c.props === 'object' ? c.props : {},
+      ...(Array.isArray(c.children) ? { children: fix(c.children) } : {}),
+    }) as BuilderComponent);
+  return fix(value);
+}
