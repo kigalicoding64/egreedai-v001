@@ -111,8 +111,10 @@ export function useBuilder() {
     updateComponents(findAndDuplicate(components));
   }, [components, updateComponents]);
 
-  const setComponentsFromAI = useCallback((newComponents: BuilderComponent[]) => {
-    updateComponents(newComponents);
+  const setComponentsFromAI = useCallback((newComponents: unknown) => {
+    const list = normalizeAIComponents(newComponents);
+    if (!list.length) throw new Error('The AI did not return any page sections. Please try again.');
+    updateComponents(list);
     setSelectedComponentId(null);
   }, [updateComponents]);
 
