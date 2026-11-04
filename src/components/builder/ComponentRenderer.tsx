@@ -93,35 +93,71 @@ export function ComponentRenderer({ component, isSelected, onSelect, isPreview =
         );
       case 'navbar':
         return (
-          <nav className="border-b border-border" style={styles}>
-            <div className="flex items-center justify-between max-w-[1200px] mx-auto px-4 py-4">
-              <span className="text-xl font-bold">{props.brand}</span>
-              <div className="flex gap-6">
+          <nav className="sticky top-0 z-20 border-b border-border/60 bg-background/70 backdrop-blur-xl" style={styles}>
+            <div className="flex items-center justify-between max-w-[1200px] mx-auto px-6 py-4 gap-4">
+              <span className="flex items-center gap-2 text-lg font-bold tracking-tight">
+                <span className="h-7 w-7 rounded-lg bg-gradient-to-br from-primary to-accent" />
+                {props.brand}
+              </span>
+              <div className="hidden md:flex gap-7">
                 {(props.links || []).map((link: string, i: number) => (
-                  <a key={i} href="#" className="text-muted-foreground hover:text-foreground transition-colors text-sm" onClick={e => e.preventDefault()}>
+                  <a key={i} href="#" className="text-muted-foreground hover:text-foreground transition-colors text-sm font-medium" onClick={e => e.preventDefault()}>
                     {link}
                   </a>
                 ))}
               </div>
+              <a href="#" className="rounded-full bg-foreground text-background px-4 py-2 text-sm font-semibold hover:opacity-90 transition" onClick={e => e.preventDefault()}>
+                {props.ctaText || 'Get started'}
+              </a>
             </div>
           </nav>
         );
-      case 'hero':
+      case 'hero': {
+        const hasImg = !!props.bgImage;
         return (
           <section
-            className="text-center py-20 px-6"
+            className={cn('relative overflow-hidden px-6 py-28 md:py-36 text-center', hasImg && 'text-white')}
             style={{
-              ...(props.bgImage ? { backgroundImage: `url(${props.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: 'linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--accent) / 0.1))' }),
+              ...(hasImg
+                ? { backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.75)), url(${props.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                : { background: 'radial-gradient(60% 60% at 50% 0%, hsl(var(--primary) / 0.25), transparent 70%), radial-gradient(40% 50% at 85% 30%, hsl(var(--accent) / 0.2), transparent 70%)' }),
               ...styles,
             }}
           >
-            <h1 className="text-5xl font-bold mb-4">{props.title}</h1>
-            <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">{props.subtitle}</p>
-            <a href="#" className="inline-block px-8 py-4 bg-primary text-primary-foreground rounded-lg font-semibold" onClick={e => e.preventDefault()}>
-              {props.ctaText}
-            </a>
+            <div className="relative mx-auto max-w-4xl">
+              {props.badge && (
+                <span className={cn('inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-medium backdrop-blur-md mb-8',
+                  hasImg ? 'border-white/25 bg-white/10' : 'border-border bg-background/60 text-muted-foreground')}>
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                  {props.badge}
+                </span>
+              )}
+              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05] mb-6 text-balance">{props.title}</h1>
+              <p className={cn('text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed', hasImg ? 'opacity-85' : 'text-muted-foreground')}>{props.subtitle}</p>
+              <div className="flex flex-wrap justify-center gap-3">
+                <a href="#" className="rounded-full bg-primary text-primary-foreground px-7 py-3.5 font-semibold shadow-lg shadow-primary/30 hover:scale-[1.02] transition" onClick={e => e.preventDefault()}>
+                  {props.ctaText}
+                </a>
+                {props.secondaryCtaText && (
+                  <a href="#" className={cn('rounded-full border px-7 py-3.5 font-semibold backdrop-blur-md transition', hasImg ? 'border-white/30 bg-white/10 hover:bg-white/20' : 'border-border bg-background/60 hover:bg-muted')} onClick={e => e.preventDefault()}>
+                    {props.secondaryCtaText} →
+                  </a>
+                )}
+              </div>
+              {Array.isArray(props.stats) && props.stats.length > 0 && (
+                <div className={cn('mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 border-t pt-10', hasImg ? 'border-white/15' : 'border-border')}>
+                  {props.stats.map((s: any, i: number) => (
+                    <div key={i}>
+                      <div className="text-3xl font-bold tracking-tight">{s.value}</div>
+                      <div className={cn('text-sm mt-1', hasImg ? 'opacity-70' : 'text-muted-foreground')}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
         );
+      }
       case 'footer':
         return (
           <footer className="border-t border-border text-center py-10 px-6" style={styles}>
@@ -137,8 +173,9 @@ export function ComponentRenderer({ component, isSelected, onSelect, isPreview =
         );
       case 'card':
         return (
-          <div className="border border-border rounded-xl p-6 bg-card" style={styles}>
-            <h3 className="text-lg font-semibold mb-2">{props.title}</h3>
+          <div className="group/card border border-border rounded-2xl p-7 bg-card shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300" style={styles}>
+            {props.icon && <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-xl">{props.icon}</div>}
+            <h3 className="text-lg font-semibold tracking-tight mb-2">{props.title}</h3>
             <p className="text-muted-foreground text-sm">{props.description}</p>
           </div>
         );
