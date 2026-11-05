@@ -33,12 +33,12 @@ Available component types and their props:
 - spacer: { height: string }
 - container: { maxWidth: string } (can have children array)
 - grid: { columns: number, gap: string } (can have children array)
-- navbar: { brand: string, links: string[] }
-- hero: { title: string, subtitle: string, ctaText: string, bgImage?: string }
-- footer: { brand?: string, links: string[], copyright: string }
-- card: { title: string, description: string }
+- navbar: { brand: string, links: [{label, href}], ctaText?: string, ctaHref?: string }
+- hero: { title: string, subtitle: string, badge?: string, ctaText: string, ctaHref?: string, secondaryCtaText?: string, secondaryCtaHref?: string, bgImage?: string, imageAlt?: string, stats?: [{value, label}] }
+- footer: { brand?: string, links: [{label, href}], copyright: string }
+- card: { icon?: string, title: string, description: string }
 - testimonial: { quote: string, author: string, role: string }
-- pricing: { plans: [{ name: string, price: string, features: string[] }] }
+- pricing: { plans: [{ name: string, price: string, period?: string, features: string[], featured?: boolean, badge?: string, ctaText?: string, href?: string }] }
 - faq: { items: [{ question: string, answer: string }] }
 - cta: { title: string, subtitle: string, buttonText: string, buttonHref: string }
 - list: { items: string[], ordered: boolean }
@@ -57,7 +57,7 @@ ${MODERN_DESIGN_BRIEF}
 
 Pages you design are exported as React + Tailwind CSS + Vite code, so choose structures and styles that map cleanly to it.
 ${REACT_STACK_EXPERT}
-IMPORTANT for this builder: the "styles" field is a CSS object with camelCase keys and real CSS values (e.g. { "padding": "96px 24px", "borderRadius": "24px", "background": "linear-gradient(...)" }). Never put Tailwind class names inside "styles"; the exporter adds the Tailwind classes itself.
+IMPORTANT for this builder: the "styles" field is a CSS object with camelCase keys and real CSS values (e.g. { "padding": "64px 24px", "borderRadius": "8px" }). Never put Tailwind class names inside "styles"; the exporter adds the Tailwind classes itself.
 
 
 ${existingComponents.length > 0 ? `The page currently has ${existingComponents.length} components. Generate new components to add or replace.` : 'Generate a complete page.'}`;
@@ -80,7 +80,7 @@ ${existingComponents.length > 0 ? `The page currently has ${existingComponents.l
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
         if (errData.notConfigured) {
-          throw new Error('LLM not configured. Add your Llama Stack URL in secrets to enable AI builder.');
+          throw new Error('The configured AI connection is unavailable. Ask an admin to check its key.');
         }
         throw new Error('AI generation failed');
       }

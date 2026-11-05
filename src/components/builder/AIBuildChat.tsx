@@ -52,12 +52,12 @@ Available component types and their props:
 - spacer: { height }
 - container: { maxWidth } (children array)
 - grid: { columns, gap } (children array)
-- navbar: { brand, links: string[] }
-- hero: { title, subtitle, ctaText, bgImage? }
-- footer: { links: string[], copyright }
-- card: { title, description }
+- navbar: { brand, links: [{label, href}], ctaText?, ctaHref? }
+- hero: { title, subtitle, badge?, ctaText, ctaHref?, secondaryCtaText?, secondaryCtaHref?, bgImage?, imageAlt?, stats?: [{value, label}] }
+- footer: { brand?, links: [{label, href}], copyright }
+- card: { icon?, title, description }
 - testimonial: { quote, author, role }
-- pricing: { plans: [{ name, price, features: string[] }] }
+- pricing: { plans: [{ name, price, period?, features: string[], featured?, badge?, ctaText?, href? }] }
 - faq: { items: [{ question, answer }] }
 - cta: { title, subtitle, buttonText, buttonHref }
 - list: { items: string[], ordered }
@@ -72,7 +72,7 @@ ${MODERN_DESIGN_BRIEF}
 
 Pages you design are exported as React + Tailwind CSS + Vite code, so choose structures and styles that map cleanly to it.
 ${REACT_STACK_EXPERT}
-IMPORTANT for this builder: the "styles" field is a CSS object with camelCase keys and real CSS values (e.g. { "padding": "96px 24px", "borderRadius": "24px", "background": "linear-gradient(...)" }). Never put Tailwind class names inside "styles"; the exporter adds the Tailwind classes itself.
+IMPORTANT for this builder: the "styles" field is a CSS object with camelCase keys and real CSS values (e.g. { "padding": "64px 24px", "borderRadius": "8px" }). Never put Tailwind class names inside "styles"; the exporter adds the Tailwind classes itself.
 
 Current page has ${existingComponents.length} components.`;
 
@@ -99,7 +99,7 @@ Current page has ${existingComponents.length} components.`;
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
         if (errData.notConfigured) {
-          toast.error('LLM not configured. Add your Llama Stack URL in secrets to enable AI builder.');
+          toast.error('The configured AI connection is unavailable. Ask an admin to check its key.');
           return;
         }
         if (response.status === 429) {
