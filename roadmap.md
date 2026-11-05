@@ -1,4 +1,6 @@
 # Chat navigation
+- [ ] Finish builder section designs and share rendering between canvas, preview, and downloads.
+- [ ] Verify builder preview and downloaded project on desktop and mobile.
 - [x] Make chat addresses authoritative for refresh, home, and browser history.
 - [x] Separate loading failures from missing chats and offer retry.
 - [x] Test navigation and verify signed-in chat/error flows.
