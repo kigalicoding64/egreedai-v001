@@ -57,7 +57,7 @@ ${MODERN_DESIGN_BRIEF}
 
 Pages you design are exported as React + Tailwind CSS + Vite code, so choose structures and styles that map cleanly to it.
 ${REACT_STACK_EXPERT}
-IMPORTANT for this builder: the "styles" field is a CSS object with camelCase keys and real CSS values (e.g. { "padding": "96px 24px", "borderRadius": "24px", "background": "linear-gradient(...)" }). Never put Tailwind class names inside "styles"; the exporter adds the Tailwind classes itself.
+IMPORTANT for this builder: the "styles" field is a CSS object with camelCase keys and real CSS values (e.g. { "padding": "64px 24px", "borderRadius": "8px" }). Never put Tailwind class names inside "styles"; the exporter adds the Tailwind classes itself.
 
 
 ${existingComponents.length > 0 ? `The page currently has ${existingComponents.length} components. Generate new components to add or replace.` : 'Generate a complete page.'}`;
@@ -80,7 +80,7 @@ ${existingComponents.length > 0 ? `The page currently has ${existingComponents.l
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
         if (errData.notConfigured) {
-          throw new Error('LLM not configured. Add your Llama Stack URL in secrets to enable AI builder.');
+          throw new Error('The configured AI connection is unavailable. Ask an admin to check its key.');
         }
         throw new Error('AI generation failed');
       }

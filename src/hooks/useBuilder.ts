@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { exportHTMLCode } from '@/utils/builderExport';
 import { BuilderComponent, BuilderPage, ComponentType, COMPONENT_DEFINITIONS } from '@/types/builder';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
@@ -175,76 +176,7 @@ export function useBuilder() {
     return findRecursive(components);
   }, [selectedComponentId, components]);
 
-  const exportToHTML = useCallback((): string => {
-    const renderComponent = (comp: BuilderComponent): string => {
-      const style = comp.styles ? Object.entries(comp.styles).map(([k, v]) => `${k.replace(/([A-Z])/g, '-$1').toLowerCase()}: ${v}`).join('; ') : '';
-      const styleAttr = style ? ` style="${style}"` : '';
-
-      switch (comp.type) {
-        case 'heading':
-          const tag = comp.props.level || 'h2';
-          return `<${tag}${styleAttr}>${comp.props.text}</${tag}>`;
-        case 'paragraph':
-          return `<p${styleAttr}>${comp.props.text}</p>`;
-        case 'button':
-          return `<a href="${comp.props.href || '#'}" class="button"${styleAttr}>${comp.props.text}</a>`;
-        case 'image':
-          return `<img src="${comp.props.src}" alt="${comp.props.alt || ''}"${styleAttr} />`;
-        case 'divider':
-          return `<hr${styleAttr} />`;
-        case 'spacer':
-          return `<div style="height: ${comp.props.height || '40px'}"></div>`;
-        case 'container':
-          return `<div class="container" style="max-width: ${comp.props.maxWidth || '1200px'}; margin: 0 auto;${style ? ' ' + style : ''}">${comp.children?.map(renderComponent).join('\n') || ''}</div>`;
-        case 'grid':
-          return `<div style="display: grid; grid-template-columns: repeat(${comp.props.columns || 3}, 1fr); gap: ${comp.props.gap || '20px'};${style ? ' ' + style : ''}">${comp.children?.map(renderComponent).join('\n') || ''}</div>`;
-        case 'navbar':
-          return `<nav${styleAttr}><div class="container" style="display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto; padding: 16px;"><strong>${comp.props.brand}</strong><div style="display: flex; gap: 24px;">${(comp.props.links || []).map((l: string) => `<a href="#">${l}</a>`).join('')}</div></div></nav>`;
-        case 'hero':
-          return `<section style="text-align: center; padding: 80px 20px;${comp.props.bgImage ? ` background-image: url(${comp.props.bgImage}); background-size: cover;` : ''}${style ? ' ' + style : ''}"><h1>${comp.props.title}</h1><p style="font-size: 1.25rem; margin: 16px 0;">${comp.props.subtitle}</p><a href="#" class="button">${comp.props.ctaText}</a></section>`;
-        case 'footer':
-          return `<footer style="text-align: center; padding: 40px 20px;${style ? ' ' + style : ''}"><div style="display: flex; justify-content: center; gap: 24px; margin-bottom: 16px;">${(comp.props.links || []).map((l: string) => `<a href="#">${l}</a>`).join('')}</div><p>${comp.props.copyright}</p></footer>`;
-        case 'card':
-          return `<div class="card" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px;${style ? ' ' + style : ''}"><h3>${comp.props.title}</h3><p>${comp.props.description}</p></div>`;
-        case 'testimonial':
-          return `<blockquote style="text-align: center; padding: 40px;${style ? ' ' + style : ''}"><p style="font-size: 1.25rem; font-style: italic;">"${comp.props.quote}"</p><p style="margin-top: 16px;"><strong>${comp.props.author}</strong> — ${comp.props.role}</p></blockquote>`;
-        case 'cta':
-          return `<section style="text-align: center; padding: 60px 20px;${style ? ' ' + style : ''}"><h2>${comp.props.title}</h2><p>${comp.props.subtitle}</p><a href="${comp.props.buttonHref || '#'}" class="button">${comp.props.buttonText}</a></section>`;
-        case 'list':
-          const listTag = comp.props.ordered ? 'ol' : 'ul';
-          return `<${listTag}${styleAttr}>${(comp.props.items || []).map((i: string) => `<li>${i}</li>`).join('')}</${listTag}>`;
-        case 'input':
-          return `<div${styleAttr}><label>${comp.props.label}</label><input type="${comp.props.type || 'text'}" placeholder="${comp.props.placeholder || ''}" /></div>`;
-        case 'pricing':
-          return `<div style="display: grid; grid-template-columns: repeat(${(comp.props.plans || []).length}, 1fr); gap: 24px;${style ? ' ' + style : ''}">${(comp.props.plans || []).map((p: any) => `<div class="card" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 32px; text-align: center;"><h3>${p.name}</h3><p style="font-size: 2rem; font-weight: bold; margin: 16px 0;">${p.price}</p><ul style="list-style: none; padding: 0;">${(p.features || []).map((f: string) => `<li style="padding: 4px 0;">✓ ${f}</li>`).join('')}</ul></div>`).join('')}</div>`;
-        case 'faq':
-          return `<div${styleAttr}>${(comp.props.items || []).map((i: any) => `<details style="margin-bottom: 12px; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px;"><summary style="cursor: pointer; font-weight: 600;">${i.question}</summary><p style="margin-top: 8px;">${i.answer}</p></details>`).join('')}</div>`;
-        default:
-          return `<div${styleAttr}>${comp.type}</div>`;
-      }
-    };
-
-    const body = components.map(renderComponent).join('\n');
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${activePage?.name || 'My Page'}</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.6; color: #1a1a1a; }
-.button { display: inline-block; padding: 12px 24px; background: #6366f1; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; }
-.button:hover { background: #4f46e5; }
-a { color: #6366f1; text-decoration: none; }
-a:hover { text-decoration: underline; }
-</style>
-</head>
-<body>
-${body}
-</body>
-</html>`;
-  }, [components, activePage]);
+  const exportToHTML = useCallback(() => exportHTMLCode(components, activePage?.name || 'My Page'), [components, activePage]);
 
   return {
     pages,
