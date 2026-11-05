@@ -13,6 +13,7 @@ export const BUILDER_PAGE_CSS = `
 }
 .builder-page *, .builder-page *::before, .builder-page *::after { box-sizing: border-box; }
 .builder-page h1, .builder-page h2, .builder-page h3, .builder-page p, .builder-page ul, .builder-page blockquote { margin: 0; }
+.builder-page h1, .builder-page h2, .builder-page h3 { font-weight: 700; }
 .builder-page a { color: inherit; text-decoration: none; }
 .builder-page a:focus-visible, .builder-page summary:focus-visible, .builder-page input:focus-visible { outline: 3px solid hsl(var(--page-highlight)); outline-offset: 4px; }
 .bp-inner { max-width: 1160px; margin-inline: auto; width: 100%; }
