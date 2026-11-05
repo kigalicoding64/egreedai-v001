@@ -52,12 +52,12 @@ Available component types and their props:
 - spacer: { height }
 - container: { maxWidth } (children array)
 - grid: { columns, gap } (children array)
-- navbar: { brand, links: string[] }
-- hero: { title, subtitle, ctaText, bgImage? }
-- footer: { links: string[], copyright }
-- card: { title, description }
+- navbar: { brand, links: [{label, href}], ctaText?, ctaHref? }
+- hero: { title, subtitle, badge?, ctaText, ctaHref?, secondaryCtaText?, secondaryCtaHref?, bgImage?, imageAlt?, stats?: [{value, label}] }
+- footer: { brand?, links: [{label, href}], copyright }
+- card: { icon?, title, description }
 - testimonial: { quote, author, role }
-- pricing: { plans: [{ name, price, features: string[] }] }
+- pricing: { plans: [{ name, price, period?, features: string[], featured?, badge?, ctaText?, href? }] }
 - faq: { items: [{ question, answer }] }
 - cta: { title, subtitle, buttonText, buttonHref }
 - list: { items: string[], ordered }

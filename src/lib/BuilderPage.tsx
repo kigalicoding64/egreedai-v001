@@ -57,5 +57,5 @@ export function BuilderSection({ section, renderChild }: { section: PageSection;
 }
 
 export function BuilderPage({ sections }: { sections: PageSection[] }) {
-  return <div className="builder-page"><style>{BUILDER_PAGE_CSS}</style>{sections.map(section => <BuilderSection key={section.id} section={section} />)}</div>;
+  return <div className="builder-page"><style dangerouslySetInnerHTML={{ __html: BUILDER_PAGE_CSS }} />{sections.map(section => <BuilderSection key={section.id} section={section} />)}</div>;
 }
