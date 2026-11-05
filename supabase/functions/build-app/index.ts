@@ -1,9 +1,12 @@
 // EgreedAI App Builder — prompt → real project.
-// PLAN → SCHEMA/API → FILES → TESTS → VALIDATE → FIX, powered by NVIDIA AI (`nvdiaapi`).
+// Every stage uses the same selected configured provider, without fallback.
 // Returns a complete file tree the client can browse, edit and download.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { callNvidia, extractJson, getNvidiaKey } from "../_shared/nvidia.ts";
+import { extractJson } from "../_shared/nvidia.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { loadGeminiKeys } from "../_shared/geminiKeys.ts";
+import { ProviderError, requestReply, selectProvider, type Provider } from "../_shared/provider.ts";
 import { QUALITY_REQUIREMENTS } from "../_shared/playbooks.ts";
 import { REACT_STACK_EXPERT } from "../_shared/reactStack.ts";
 
@@ -27,83 +30,16 @@ ${QUALITY_REQUIREMENTS.map((q) => `- ${q}`).join("\n")}
 
 ${REACT_STACK_EXPERT}`;
 
-// Edge requests are cut at 150s; every stage must finish before this point.
-const REQUEST_BUDGET_MS = 138000;
-// Per-request start time (requests can run concurrently in one worker).
-const reqStore = new AsyncLocalStorage<number>();
-const remaining = () => REQUEST_BUDGET_MS - (Date.now() - (reqStore.getStore() ?? Date.now()));
-
-// Streamed so long files are judged on steady progress, not one buffered wait.
-async function gateway(messages: { role: string; content: string }[], json: boolean) {
-  const lk = Deno.env.get("LOVABLE_API_KEY");
-  if (!lk) throw new Error("Backup AI is not configured.");
-  const budget = remaining() - 2000;
-  if (budget < 10000) throw new Error("The AI took too long on this step. Please try again.");
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), budget);
-  try {
-    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${lk}`, "Content-Type": "application/json", "X-Lovable-AIG-SDK": "fetch" },
-      body: JSON.stringify({
-        model: "openai/gpt-6-astra", messages, stream: true, reasoning_effort: "low",
-        ...(json ? { response_format: { type: "json_object" } } : {}),
-      }),
-      signal: ctrl.signal,
-    });
-    if (r.status === 402) throw new Error("AI credits have run out. Please top up and try again.");
-    if (r.status === 429) throw new Error("The AI is busy right now. Please wait a moment and try again.");
-    if (!r.ok || !r.body) {
-      console.error("[build-app] gateway", r.status, (await r.text().catch(() => "")).slice(0, 300));
-      throw new Error(`The AI service had a problem (${r.status}). Please try again.`);
-    }
-    const reader = r.body.getReader();
-    const dec = new TextDecoder();
-    let buf = "", text = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const lines = buf.split("\n");
-      buf = lines.pop() ?? "";
-      for (const line of lines) {
-        const s = line.trim();
-        if (!s.startsWith("data:")) continue;
-        const p = s.slice(5).trim();
-        if (!p || p === "[DONE]") continue;
-        try { text += String(JSON.parse(p)?.choices?.[0]?.delta?.content ?? ""); } catch { /* partial */ }
-      }
-    }
-    if (!text.trim()) throw new Error("The AI returned an empty answer. Please try again.");
-    return { text, model: "gateway" };
-  } catch (err) {
-    if ((err as Error).name === "AbortError") throw new Error("The AI took too long on this step. Please try again.");
-    throw err;
-  } finally { clearTimeout(t); }
+// One bounded provider request per stage, with concurrent requests isolated.
+interface RequestContext { provider: Provider; key: string; signal: AbortSignal }
+const reqStore = new AsyncLocalStorage<RequestContext>();
+async function llm(_kind: string, messages: { role: string; content: string }[], _key: string, opts: { maxTokens?: number }) {
+  const context = reqStore.getStore();
+  if (!context) throw new ProviderError(503, "The configured connection is unavailable.");
+  const text = await requestReply(context.provider, context.key, messages, context.signal, fetch, Math.max(16384, opts.maxTokens || 0));
+  return { text };
 }
-
-// Planning/review: NVIDIA first with a short budget, then the backup AI.
-async function llm(kind: "code" | "reason" | "text", messages: { role: string; content: string }[], key: string, opts: any) {
-  try {
-    return await callNvidia(kind, messages, key, { ...opts, deadlineMs: 40000, timeoutMs: 15000 });
-  } catch (e) {
-    console.error("[build-app] nvidia failed, using gateway", (e as Error).message);
-    return await gateway(messages, !!opts?.json);
-  }
-}
-
-// File writing: NVIDIA models stall or return empty on long files, so the
-// backup AI goes first and gets the full time budget; NVIDIA is the fallback.
-async function codeLlm(messages: { role: string; content: string }[], key: string, opts: any) {
-  try {
-    return await gateway(messages, true);
-  } catch (e) {
-    const msg = (e as Error).message;
-    console.error("[build-app] gateway failed for files", msg);
-    if (/credits|busy/i.test(msg) || remaining() < 30000) throw e;
-    return await callNvidia("code", messages, key, { ...opts, deadlineMs: remaining() - 5000, timeoutMs: 20000 });
-  }
-}
+const codeLlm = llm.bind(null, "code");
 
 /** Accept the plan shapes models actually return (wrapped, string file lists, alt keys). */
 function normalizePlan(raw: any): any | null {
@@ -130,11 +66,7 @@ Keep it to at most 14 files. Include a README, the API entry point, the data lay
   const { text } = await llm("reason", msgs, key, { temperature: 0.2, maxTokens: 4000, json: true });
   const plan = normalizePlan(extractJson<any>(text));
   if (plan) return plan;
-  console.error("[build-app] plan unparseable, retrying on gateway:", text.slice(0, 300));
-  const second = await gateway(msgs, true);
-  const plan2 = normalizePlan(extractJson<any>(second.text));
-  if (!plan2) console.error("[build-app] gateway plan unparseable:", second.text.slice(0, 300));
-  return plan2;
+  return null;
 }
 
 async function writeFiles(prompt: string, plan: any, key: string, targets: { path: string; purpose: string }[]) {
@@ -146,14 +78,12 @@ Escape newlines properly inside JSON strings. Write every requested file complet
   ];
   const pick = (t: string) => {
     const parsed = extractJson<{ files: ProjectFile[] }>(t);
-    return Array.isArray(parsed?.files) ? parsed!.files.filter((f) => f?.path && typeof f.content === "string") : [];
+    return Array.isArray(parsed?.files) ? parsed.files.filter((f) => f?.path && typeof f.content === "string") : [];
   };
   const { text } = await codeLlm(msgs, key, { temperature: 0.15, maxTokens: 6000, json: true });
   const out = pick(text);
   if (out.length) return out;
-  console.error("[build-app] files unparseable:", text.slice(0, 200));
-  if (remaining() < 45000) throw new Error("The AI's answer for this file was unreadable. Please try again.");
-  return pick((await gateway(msgs, true)).text);
+  throw new ProviderError(422, "The AI returned an unreadable file. No automatic retry was made.");
 }
 
 async function validateProject(files: ProjectFile[], key: string) {
@@ -163,7 +93,9 @@ async function validateProject(files: ProjectFile[], key: string) {
 Reply with JSON only: {"ok":true|false,"issues":[{"path":"file","severity":"high|medium|low","problem":"...","fix":"..."}]}` },
     { role: "user", content: listing },
   ], key, { temperature: 0, maxTokens: 2000, json: true });
-  return extractJson<{ ok: boolean; issues: any[] }>(text) ?? { ok: true, issues: [] };
+  const review = extractJson<{ ok: boolean; issues: any[] }>(text);
+  if (!review || typeof review.ok !== "boolean" || !Array.isArray(review.issues)) throw new ProviderError(422, "The project review was unreadable. It has not been marked as passing.");
+  return review;
 }
 
 async function fixFiles(files: ProjectFile[], issues: any[], key: string) {
@@ -175,10 +107,35 @@ async function fixFiles(files: ProjectFile[], issues: any[], key: string) {
     { role: "user", content: `Defects:\n${JSON.stringify(issues, null, 2)}\n\nCurrent files:\n${subset.map((f) => `--- ${f.path} ---\n${f.content}`).join("\n\n").slice(0, 26000)}` },
   ], key, { temperature: 0.1, maxTokens: 7000, json: true });
   const parsed = extractJson<{ files: ProjectFile[] }>(text);
-  return Array.isArray(parsed?.files) ? parsed!.files.filter((f) => f?.path && typeof f.content === "string") : [];
+  return Array.isArray(parsed?.files) ? parsed.files.filter((f) => f?.path && typeof f.content === "string") : [];
 }
 
-serve((req) => reqStore.run(Date.now(), () => handle(req)));
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  const respond = (error: string, status: number) => new Response(JSON.stringify({ error }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) { clearTimeout(timeout); return respond("The AI connection is not configured.", 503); }
+  const admin = createClient(url, serviceKey);
+  let selected: { provider: Provider; key: string } | undefined;
+  try {
+    selected = selectProvider(await loadGeminiKeys(controller.signal), Deno.env.get("openai") || Deno.env.get("openai1"));
+    const { data: access, error } = await admin.from("chat_provider_access_state").select("denied").eq("provider", selected.provider).maybeSingle();
+    if (error) return respond("Could not check the configured connection. No AI request was sent.", 503);
+    if (access?.denied) return respond("The configured AI connection is blocked. An admin must restore access. No other provider was used.", 403);
+    return await reqStore.run({ ...selected, signal: controller.signal }, () => handle(req));
+  } catch (error) {
+    if (error instanceof ProviderError && error.denied && selected) {
+      await admin.from("chat_provider_access_state").upsert({ provider: selected.provider, denied: true, reason: error.message, updated_at: new Date().toISOString() });
+    }
+    if (controller.signal.aborted) return respond("This build step took too long. No other provider was used.", 504);
+    if (error instanceof ProviderError) return respond(error.message, error.status);
+    console.error("[build-app] request failed", error instanceof Error ? error.name : "unknown");
+    return respond("The build step could not finish. No other provider was used.", 502);
+  } finally { clearTimeout(timeout); }
+});
 
 async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -186,8 +143,7 @@ async function handle(req: Request): Promise<Response> {
   const json = (b: unknown, status = 200) =>
     new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-  const key = getNvidiaKey();
-  if (!key) return json({ error: "NVIDIA AI key is not configured." }, 500);
+  const key = ""; // Provider credentials stay inside the isolated request context.
 
   // Staged API: the client runs plan → files (per batch) → validate → fix as
   // separate short requests, so no single call hits the edge timeout.
@@ -219,7 +175,6 @@ async function handle(req: Request): Promise<Response> {
     }
     return json({ error: `Unknown stage: ${stage}` }, 400);
   } catch (e) {
-    console.error("[build-app]", stage, (e as Error).message);
-    return json({ error: (e as Error).message || "unexpected error" }, 500);
+    throw e;
   }
 }

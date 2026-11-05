@@ -14,7 +14,11 @@ interface Step { label: string; state: 'active' | 'done' | 'error'; detail?: str
 
 async function call(body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke('build-app', { body });
-  if (error) throw new Error(error.message);
+  if (error) {
+    const response = (error as { context?: Response }).context;
+    const payload = response ? await response.clone().json().catch(() => null) : null;
+    throw new Error(typeof payload?.error === 'string' ? payload.error : 'The build request could not finish. Please check your connection.');
+  }
   if (data?.error) throw new Error(data.error);
   return data;
 }
@@ -47,14 +51,7 @@ export default function AppBuilder() {
         const batch = targets.slice(i, i + 1);
         label = `Writing ${batch.map((b: any) => b.path).join(', ')}`;
         push({ label, state: 'active' });
-        let out: PFile[];
-        try {
-          ({ files: out } = await call({ stage: 'files', prompt, plan, targets: batch }));
-        } catch (err) {
-          if (/credits|busy/i.test((err as Error).message)) throw err;
-          push({ label, state: 'active', detail: 'Retrying once…' });
-          ({ files: out } = await call({ stage: 'files', prompt, plan, targets: batch }));
-        }
+        const { files: out } = await call({ stage: 'files', prompt, plan, targets: batch });
         (out as PFile[]).forEach((f) => byPath.set(f.path, f));
         setFiles([...byPath.values()]);
         push({ label, state: 'done', detail: `${out.length} written` });
@@ -155,7 +152,7 @@ export default function AppBuilder() {
           </Button>
           <div className="space-y-2">
             {steps.map((s) => (
-              <div key={s.label} className="flex gap-2 text-xs">
+              <div key={s.label} role={s.state === 'error' ? 'alert' : undefined} className="flex gap-2 text-xs">
                 {s.state === 'active' ? <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
                   : s.state === 'done' ? <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />
                   : <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />}
