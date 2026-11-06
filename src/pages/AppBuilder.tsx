@@ -62,7 +62,7 @@ export default function AppBuilder() {
         const batch = targets.slice(i, i + 1);
         label = `Writing ${batch.map((b: any) => b.path).join(', ')}`;
         push({ label, state: 'active' });
-        const { files: out } = await call({ stage: 'files', prompt, plan, targets: batch });
+        const { files: out } = await request({ stage: 'files', prompt, plan, targets: batch });
         (out as PFile[]).forEach((f) => byPath.set(f.path, f));
         setFiles([...byPath.values()]);
         push({ label, state: 'done', detail: `${out.length} written` });
@@ -73,7 +73,7 @@ export default function AppBuilder() {
 
       label = 'Reviewing for defects';
       push({ label, state: 'active' });
-      const review = await call({ stage: 'validate', files: all });
+      const review = await request({ stage: 'validate', files: all });
       const found = Array.isArray(review?.issues) ? review.issues : [];
       setIssues(found);
       push({ label, state: 'done', detail: found.length ? `${found.length} issue(s) found` : 'No material defects found on review' });
@@ -81,7 +81,7 @@ export default function AppBuilder() {
       if (found.length) {
         label = 'Fixing issues';
         push({ label, state: 'active' });
-        const { files: fixed } = await call({ stage: 'fix', files: all, issues: found });
+        const { files: fixed } = await request({ stage: 'fix', files: all, issues: found });
         (fixed as PFile[]).forEach((f) => byPath.set(f.path, f));
         all = [...byPath.values()];
         setFiles(all);
