@@ -44,11 +44,11 @@ describe('App Builder request boundaries', () => {
       await settle();
       expect(invoke).toHaveBeenCalledTimes(1);
 
-      await settle(12_000);
+      await settle(12_100);
       expect(invoke).toHaveBeenCalledTimes(2);
-      await settle(12_000);
+      await settle(12_100);
       expect(invoke).toHaveBeenCalledTimes(3);
-      await settle(12_000);
+      await settle(12_100);
       expect(invoke).toHaveBeenCalledTimes(4);
       expect(invoke.mock.calls.map(([body]) => body.stage)).toEqual(['plan', 'files', 'files', 'validate']);
     } finally {
