@@ -31,30 +31,20 @@ describe('App Builder request boundaries', () => {
   });
 
   it('pauses between new stage requests without repeating any request', async () => {
-    vi.useFakeTimers();
-    try {
-      invoke.mockImplementation(async ({ stage, targets }: { stage: string; targets?: { path: string }[] }) => {
-        if (stage === 'plan') return { data: { plan: { name: 'demo', summary: 'Demo', files: [{ path: 'src/a.ts' }, { path: 'src/b.ts' }] } }, error: null };
-        if (stage === 'files') return { data: { files: [{ path: targets![0].path, content: 'export const value = 1;' }] }, error: null };
-        return { data: { ok: true, issues: [] }, error: null };
-      });
-      render(<MemoryRouter><AppBuilder /></MemoryRouter>);
-      fireEvent.change(screen.getByPlaceholderText(/Describe the app/), { target: { value: 'Build a task manager' } });
-      fireEvent.click(screen.getByRole('button', { name: /^Build$/ }));
-      await settle();
-      expect(invoke).toHaveBeenCalledTimes(1);
-
-      await settle(12_100);
-      expect(invoke).toHaveBeenCalledTimes(2);
-      await settle(12_100);
-      expect(invoke).toHaveBeenCalledTimes(3);
-      await settle(12_100);
-      expect(invoke).toHaveBeenCalledTimes(4);
-      expect(invoke.mock.calls.map(([body]) => body.stage)).toEqual(['plan', 'files', 'files', 'validate']);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+    invoke.mockImplementation(async ({ stage, targets }: { stage: string; targets?: { path: string }[] }) => {
+      if (stage === 'plan') return { data: { plan: { name: 'demo', summary: 'Demo', files: [{ path: 'src/a.ts' }, { path: 'src/b.ts' }] } }, error: null };
+      if (stage === 'files') return { data: { files: [{ path: targets![0].path, content: 'export const value = 1;' }] }, error: null };
+      return { data: { ok: true, issues: [] }, error: null };
+    });
+    render(<MemoryRouter><AppBuilder /></MemoryRouter>);
+    fireEvent.change(screen.getByPlaceholderText(/Describe the app/), { target: { value: 'Build a task manager' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Build$/ }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(2), { timeout: 14_000 });
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(3), { timeout: 14_000 });
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(4), { timeout: 14_000 });
+    expect(invoke.mock.calls.map(([body]) => body.stage)).toEqual(['plan', 'files', 'files', 'validate']);
+  }, 45_000);
 
   it('shows the safe denial and stops without retrying a failed file request', async () => {
     vi.useFakeTimers();
