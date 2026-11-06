@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils';
 interface PFile { path: string; content: string; language?: string }
 interface Step { label: string; state: 'active' | 'done' | 'error'; detail?: string }
 
+const MIN_STAGE_GAP_MS = 12_000;
+
 async function call(body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke('build-app', { body });
   if (error) {

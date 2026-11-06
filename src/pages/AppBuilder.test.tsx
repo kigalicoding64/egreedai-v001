@@ -8,6 +8,16 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: { functions: { invo
 
 describe('App Builder terminal errors', () => {
   beforeEach(() => invoke.mockReset());
+  it('shows a provider rate limit and stops without retrying the failed file request', async () => {
+    invoke.mockResolvedValueOnce({ data: { plan: { name: 'demo', summary: 'Demo', files: [{ path: 'src/main.ts' }] } }, error: null });
+    invoke.mockResolvedValueOnce({ data: null, error: { context: new Response(JSON.stringify({ error: 'The configured provider is rate limiting requests. Please wait before sending a new message.' }), { status: 429 }) } });
+    render(<MemoryRouter><AppBuilder /></MemoryRouter>);
+    fireEvent.change(screen.getByPlaceholderText(/Describe the app/), { target: { value: 'Build a task manager' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Build$/ }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('The configured provider is rate limiting requests.'));
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
   it('shows the safe denial and stops without retrying a failed file request', async () => {
     invoke.mockResolvedValueOnce({ data: { plan: { name: 'demo', summary: 'Demo', files: [{ path: 'src/main.ts' }] } }, error: null });
     invoke.mockResolvedValueOnce({ data: null, error: { context: new Response(JSON.stringify({ error: 'The configured provider denied access. No other provider was used.' }), { status: 403 }) } });
