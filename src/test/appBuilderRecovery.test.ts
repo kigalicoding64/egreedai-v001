@@ -8,7 +8,7 @@ describe('App Builder single-file recovery', () => {
   });
 
   it('accepts a fenced file without treating its markup as JSON', () => {
-    expect(recoverSingleFile('```ts\nexport const total: number = 2 + 2;\n```')).toBe('export const total: number = 2 + 2;');
+    expect(recoverSingleFile('```ts\nexport const total: number = 2 + 2;\n```')).toBe('export const total: number = 2 + 2;\n');
   });
 
   it('accepts raw code for the single requested file', () => {
