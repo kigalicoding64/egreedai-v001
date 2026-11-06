@@ -7,3 +7,4 @@
 
 - Builder sections and semantic page styles share one renderer for editing, standalone HTML, and Vite exports so downloaded pages match the preview.
 - App Builder stages use the shared configured-provider client once per stage, never automatic retries or workspace-credit fallbacks, so failures cannot silently change the connection.
+- App Builder single-file recovery lives in build-app/recoverSingleFile.ts so malformed provider wrappers can be tested without executing the edge function.

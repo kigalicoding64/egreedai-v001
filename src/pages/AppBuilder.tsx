@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils';
 interface PFile { path: string; content: string; language?: string }
 interface Step { label: string; state: 'active' | 'done' | 'error'; detail?: string }
 
+const MIN_STAGE_GAP_MS = 12_000;
+
 async function call(body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke('build-app', { body });
   if (error) {
@@ -39,9 +41,18 @@ export default function AppBuilder() {
   const run = async () => {
     setBusy(true); setSteps([]); setPlan(null); setFiles([]); setIssues([]); setSelected(null);
     let label = 'Planning';
+    let lastRequestAt = 0;
+    // Pace new stage requests to stay within the configured provider's rate
+    // limit. This never repeats a request: a failed stage remains terminal.
+    const request = async (body: Record<string, unknown>) => {
+      const waitMs = Math.max(0, lastRequestAt + MIN_STAGE_GAP_MS - Date.now());
+      if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
+      lastRequestAt = Date.now();
+      return call(body);
+    };
     try {
       push({ label, state: 'active' });
-      const { plan } = await call({ stage: 'plan', prompt, stack });
+      const { plan } = await request({ stage: 'plan', prompt, stack });
       setPlan(plan);
       push({ label, state: 'done', detail: `${plan.files.length} files planned` });
 
@@ -51,7 +62,7 @@ export default function AppBuilder() {
         const batch = targets.slice(i, i + 1);
         label = `Writing ${batch.map((b: any) => b.path).join(', ')}`;
         push({ label, state: 'active' });
-        const { files: out } = await call({ stage: 'files', prompt, plan, targets: batch });
+        const { files: out } = await request({ stage: 'files', prompt, plan, targets: batch });
         (out as PFile[]).forEach((f) => byPath.set(f.path, f));
         setFiles([...byPath.values()]);
         push({ label, state: 'done', detail: `${out.length} written` });
@@ -62,7 +73,7 @@ export default function AppBuilder() {
 
       label = 'Reviewing for defects';
       push({ label, state: 'active' });
-      const review = await call({ stage: 'validate', files: all });
+      const review = await request({ stage: 'validate', files: all });
       const found = Array.isArray(review?.issues) ? review.issues : [];
       setIssues(found);
       push({ label, state: 'done', detail: found.length ? `${found.length} issue(s) found` : 'No material defects found on review' });
@@ -70,7 +81,7 @@ export default function AppBuilder() {
       if (found.length) {
         label = 'Fixing issues';
         push({ label, state: 'active' });
-        const { files: fixed } = await call({ stage: 'fix', files: all, issues: found });
+        const { files: fixed } = await request({ stage: 'fix', files: all, issues: found });
         (fixed as PFile[]).forEach((f) => byPath.set(f.path, f));
         all = [...byPath.values()];
         setFiles(all);
@@ -128,7 +139,7 @@ export default function AppBuilder() {
   const shownLines = current && current.path in revealed ? allLines.slice(0, revealed[current.path]) : (current && !queueRef.current.includes(current.path) && streamingPath !== current.path ? allLines : []);
 
   useEffect(() => {
-    if (streamingPath && streamingPath === current?.path) viewRef.current?.scrollTo({ top: viewRef.current.scrollHeight });
+    if (streamingPath && streamingPath === current?.path) viewRef.current?.scrollTo?.({ top: viewRef.current.scrollHeight });
   }, [shownLines.length, streamingPath, current?.path]);
 
   return (

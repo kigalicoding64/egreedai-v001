@@ -9,6 +9,7 @@ import { loadGeminiKeys } from "../_shared/geminiKeys.ts";
 import { ProviderError, requestReply, selectProvider, type Provider } from "../_shared/provider.ts";
 import { QUALITY_REQUIREMENTS } from "../_shared/playbooks.ts";
 import { REACT_STACK_EXPERT } from "../_shared/reactStack.ts";
+import { recoverSingleFile } from "./recoverSingleFile.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,22 +68,6 @@ Keep it to at most 14 files. Include a README, the API entry point, the data lay
   const plan = normalizePlan(extractJson<any>(text));
   if (plan) return plan;
   return null;
-}
-
-function recoverSingleFile(text: string): string | null {
-  const t = (text || "").trim();
-  if (!t) return null;
-  // Content field from a truncated/mis-escaped JSON object.
-  const m = t.match(/"content"\s*:\s*"([\s\S]*)/);
-  if (m) {
-    let body = m[1].replace(/"\s*}\s*]\s*}\s*(```)?\s*$/, "").replace(/"\s*}\s*$/, "");
-    body = body.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
-    return body.trim() ? body : null;
-  }
-  const fence = t.match(/```[\w.+-]*\n([\s\S]*?)```/);
-  if (fence && fence[1].trim()) return fence[1];
-  if (t.startsWith("{") || t.startsWith("[")) return null;
-  return t;
 }
 
 async function writeFiles(prompt: string, plan: any, key: string, targets: { path: string; purpose: string }[]) {
