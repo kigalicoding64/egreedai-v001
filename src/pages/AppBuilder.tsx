@@ -139,7 +139,7 @@ export default function AppBuilder() {
   const shownLines = current && current.path in revealed ? allLines.slice(0, revealed[current.path]) : (current && !queueRef.current.includes(current.path) && streamingPath !== current.path ? allLines : []);
 
   useEffect(() => {
-    if (streamingPath && streamingPath === current?.path) viewRef.current?.scrollTo({ top: viewRef.current.scrollHeight });
+    if (streamingPath && streamingPath === current?.path) viewRef.current?.scrollTo?.({ top: viewRef.current.scrollHeight });
   }, [shownLines.length, streamingPath, current?.path]);
 
   return (

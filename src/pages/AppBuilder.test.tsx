@@ -44,7 +44,7 @@ describe('App Builder request boundaries', () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledTimes(2), { timeout: 14_000 });
     await waitFor(() => expect(invoke).toHaveBeenCalledTimes(3), { timeout: 14_000 });
     await waitFor(() => expect(invoke).toHaveBeenCalledTimes(4), { timeout: 14_000 });
-    expect(invoke.mock.calls.map(([body]) => body.stage)).toEqual(['plan', 'files', 'files', 'validate']);
+    expect(invoke.mock.calls.map(([, options]) => options.body.stage)).toEqual(['plan', 'files', 'files', 'validate']);
   }, 45_000);
 
   it('shows the safe denial and stops without retrying a failed file request', async () => {
