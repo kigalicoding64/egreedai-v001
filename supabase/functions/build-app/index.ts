@@ -9,6 +9,7 @@ import { loadGeminiKeys } from "../_shared/geminiKeys.ts";
 import { ProviderError, requestReply, selectProvider, type Provider } from "../_shared/provider.ts";
 import { QUALITY_REQUIREMENTS } from "../_shared/playbooks.ts";
 import { REACT_STACK_EXPERT } from "../_shared/reactStack.ts";
+import { recoverSingleFile } from "./recoverSingleFile.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
