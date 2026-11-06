@@ -31,7 +31,8 @@ describe('App Builder request boundaries', () => {
   });
 
   it('pauses between new stage requests without repeating any request', async () => {
-    invoke.mockImplementation(async ({ stage, targets }: { stage: string; targets?: { path: string }[] }) => {
+    invoke.mockImplementation(async (_name: string, options: { body: { stage: string; targets?: { path: string }[] } }) => {
+      const { stage, targets } = options.body;
       if (stage === 'plan') return { data: { plan: { name: 'demo', summary: 'Demo', files: [{ path: 'src/a.ts' }, { path: 'src/b.ts' }] } }, error: null };
       if (stage === 'files') return { data: { files: [{ path: targets![0].path, content: 'export const value = 1;' }] }, error: null };
       return { data: { ok: true, issues: [] }, error: null };
