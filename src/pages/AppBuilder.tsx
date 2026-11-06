@@ -41,9 +41,18 @@ export default function AppBuilder() {
   const run = async () => {
     setBusy(true); setSteps([]); setPlan(null); setFiles([]); setIssues([]); setSelected(null);
     let label = 'Planning';
+    let lastRequestAt = 0;
+    // Pace new stage requests to stay within the configured provider's rate
+    // limit. This never repeats a request: a failed stage remains terminal.
+    const request = async (body: Record<string, unknown>) => {
+      const waitMs = Math.max(0, lastRequestAt + MIN_STAGE_GAP_MS - Date.now());
+      if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
+      lastRequestAt = Date.now();
+      return call(body);
+    };
     try {
       push({ label, state: 'active' });
-      const { plan } = await call({ stage: 'plan', prompt, stack });
+      const { plan } = await request({ stage: 'plan', prompt, stack });
       setPlan(plan);
       push({ label, state: 'done', detail: `${plan.files.length} files planned` });
 
