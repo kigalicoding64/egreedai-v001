@@ -6,6 +6,7 @@
 - [x] Test navigation and verify signed-in chat/error flows.
 
 # AI replies
+- [ ] Verify unreadable-file recovery with a complete signed-in App Builder run and inspect the downloaded project.
 - [x] Remove App Builder provider/workspace fallbacks; signed-in plan, files, review, fix and download succeeded; terminal errors stop without retry.
 - [x] Remove hidden provider/workspace fallback and bound reply execution.
 - [x] Test message saving, failed-reply exclusion, duplicate-send protection, and complete responses with controlled provider tests.
