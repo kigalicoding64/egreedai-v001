@@ -4,7 +4,7 @@ import { recoverSingleFile } from '../../supabase/functions/build-app/recoverSin
 describe('App Builder single-file recovery', () => {
   it('recovers complete code from a broken JSON wrapper with raw newlines and quotes', () => {
     const response = '{"files":[{"path":"src/App.tsx","language":"tsx","content":"export default function App() {\n  return <main>{"Demo"}</main>;\n}\n"}]}';
-    expect(recoverSingleFile(response)).toBe('export default function App() {\n  return <main>{"Demo"}</main>;\n}');
+    expect(recoverSingleFile(response)).toBe('export default function App() {\n  return <main>{"Demo"}</main>;\n}\n');
   });
 
   it('accepts a fenced file without treating its markup as JSON', () => {
