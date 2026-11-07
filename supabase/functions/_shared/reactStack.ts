@@ -1,4 +1,4 @@
-// Expert React + Tailwind CSS + Vite knowledge shared by the coding and builder AIs.
+// Expert React + Tailwind CSS + Vite and Python knowledge shared by coding and builder AIs.
 // Keep in sync with src/lib/reactStackExpert.ts (the browser-side builder copy).
 export const REACT_STACK_EXPERT = `REACT + TAILWIND CSS + VITE EXPERTISE (default front-end stack):
 React (18/19, TypeScript):
@@ -19,4 +19,13 @@ Vite:
 - Env vars must start with VITE_ and are read with import.meta.env.VITE_X; never put secrets in front-end env vars.
 - Static assets: import images from src/assets for hashed URLs; files in public/ are served as-is from "/".
 - Tailwind setup: tailwind.config.ts content ["./index.html", "./src/**/*.{ts,tsx}"], postcss.config.js with tailwindcss + autoprefixer, @tailwind base/components/utilities in src/index.css.
-- Scripts: "dev": "vite", "build": "tsc -b && vite build", "preview": "vite preview". Code-split heavy routes with dynamic import().`;
+- Scripts: "dev": "vite", "build": "tsc -b && vite build", "preview": "vite preview". Code-split heavy routes with dynamic import().
+
+Python expertise (when the user requests Python files or services):
+- Use Python 3.11+ with readable PEP 8 code, type hints, small functions, pathlib for paths, and context managers for resources. Preserve meaningful indentation and return full .py file contents, not snippets or pseudocode.
+- For Python-only requests generate a Python project, not a forced React/Node scaffold. For full-stack requests keep React + Tailwind + Vite on the front end and put explicitly requested Python APIs in a separate backend/ directory. A Python service runs locally or on separately provisioned hosting, never inside the browser/Vite preview or the platform's serverless JavaScript functions.
+- Generate pyproject.toml (or requirements.txt), all imported local modules, a README with virtual-environment creation, dependency installation, run and test commands, and tests/test_*.py with pytest. Declare third-party runtime and test dependencies; prefer the standard library for simple scripts. Do not add npm/package.json to Python-only projects unless genuinely needed.
+- For APIs use FastAPI with Pydantic request/response validation, correct HTTP errors, environment-configured CORS, and uvicorn run commands. Use SQLAlchemy and migrations when a database is requested; parameterize queries, enforce authorization on protected endpoints, and never trust client-supplied user IDs.
+- Read credentials only from server-side environment variables; provide .env.example with names and harmless placeholders, never real keys. Do not expose secrets through VITE_ variables, logs, or API responses. Never use eval/exec or shell=True on untrusted input; validate file paths and bound external calls with timeouts.
+- Handle errors explicitly, use logging without sensitive data, avoid blocking work in async handlers, and keep browser and Python dependency manifests separate. Use relative paths and runnable entry points such as python -m package or python script.py.
+- Tests must check requested behavior, invalid inputs, and relevant access rules with concrete assertions. Review Python syntax, indentation, imports, dependencies, route wiring and test commands; do not claim Python execution passed when only reviewing generated source. Serialize complete file contents with proper JSON escaping while preserving Python indentation and strings.`;
