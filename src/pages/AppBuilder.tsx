@@ -6,8 +6,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Loader2, CheckCircle2, AlertTriangle, Download, Rocket, FileCode } from 'lucide-react';
+import { ArrowLeft, Github, Loader2, CheckCircle2, AlertTriangle, Download, Rocket, FileCode } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { FREE_STARTERS, fetchRepo, summarizeRepo, adaptRepo, type RepoFile } from '@/lib/githubRepo';
 
 interface PFile { path: string; content: string; language?: string }
 interface Step { label: string; state: 'active' | 'done' | 'error'; detail?: string }
@@ -35,6 +36,33 @@ export default function AppBuilder() {
   const [files, setFiles] = useState<PFile[]>([]);
   const [issues, setIssues] = useState<any[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [repoUrl, setRepoUrl] = useState('');
+  const repoCache = useRef<{ url: string; files: RepoFile[]; name: string } | null>(null);
+
+  const loadRepo = async () => {
+    if (repoCache.current?.url === repoUrl.trim()) return repoCache.current;
+    const label = 'Reading GitHub reference';
+    push({ label, state: 'active' });
+    const r = await fetchRepo(repoUrl, (d, t) => push({ label, state: 'active', detail: `${d}/${t} files` }));
+    push({ label, state: 'done', detail: `${r.files.length} files${r.truncated ? ' (large repo, main files only)' : ''}` });
+    repoCache.current = { url: repoUrl.trim(), ...r };
+    return repoCache.current;
+  };
+
+  // No AI needed: turn the public repository into the project directly.
+  const buildFromRepo = async () => {
+    setBusy(true); setSteps([]); setIssues([]); setSelected(null); setFiles([]);
+    try {
+      const r = await loadRepo();
+      const name = prompt.trim().split(/[.\n]/)[0].slice(0, 40) || r.name;
+      const out = adaptRepo(r.files, name, prompt.trim(), repoUrl.trim());
+      setPlan({ name: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), summary: `Ready-to-run project from ${repoUrl.trim()} — built without AI.`, files: out });
+      setFiles(out);
+      push({ label: 'Project ready (no AI used)', state: 'done', detail: 'Download it and run the original setup steps in README' });
+    } catch (e) {
+      push({ label: 'Reading GitHub reference', state: 'error', detail: (e as Error).message });
+    } finally { setBusy(false); }
+  };
 
   const push = (s: Step) => setSteps((p) => [...p.filter((x) => x.label !== s.label), s]);
 
@@ -51,8 +79,9 @@ export default function AppBuilder() {
       return call(body);
     };
     try {
+      const reference = repoUrl.trim() ? summarizeRepo((await loadRepo()).files) : '';
       push({ label, state: 'active' });
-      const { plan } = await request({ stage: 'plan', prompt, stack });
+      const { plan } = await request({ stage: 'plan', prompt, stack, reference });
       setPlan(plan);
       push({ label, state: 'done', detail: `${plan.files.length} files planned` });
 
@@ -62,7 +91,7 @@ export default function AppBuilder() {
         const batch = targets.slice(i, i + 1);
         label = `Writing ${batch.map((b: any) => b.path).join(', ')}`;
         push({ label, state: 'active' });
-        const { files: out } = await request({ stage: 'files', prompt, plan, targets: batch });
+        const { files: out } = await request({ stage: 'files', prompt, plan, targets: batch, reference });
         (out as PFile[]).forEach((f) => byPath.set(f.path, f));
         setFiles([...byPath.values()]);
         push({ label, state: 'done', detail: `${out.length} written` });
@@ -158,8 +187,20 @@ export default function AppBuilder() {
           <Textarea rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)}
             placeholder="Describe the app: e.g. A booking API for a Kigali salon with customers, services and appointments" />
           <Input value={stack} onChange={(e) => setStack(e.target.value)} placeholder="Preferred stack (optional)" />
+          <div className="space-y-1.5">
+            <Input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="Public GitHub repo to use as reference (optional)" aria-label="GitHub reference" />
+            <div className="flex flex-wrap gap-1">
+              {FREE_STARTERS.map((s) => (
+                <button key={s.url} type="button" title={s.note} onClick={() => setRepoUrl(s.url)}
+                  className={cn('text-[10px] px-2 py-0.5 rounded-full border border-border hover:bg-muted', repoUrl === s.url && 'bg-primary/15 border-primary text-primary')}>{s.label}</button>
+              ))}
+            </div>
+          </div>
           <Button className="w-full" disabled={busy || prompt.trim().length < 8} onClick={run}>
-            {busy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Rocket className="w-4 h-4 mr-2" />}Build
+            {busy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Rocket className="w-4 h-4 mr-2" />}Build with AI
+          </Button>
+          <Button variant="outline" className="w-full" disabled={busy || !repoUrl.trim()} onClick={buildFromRepo}>
+            <Github className="w-4 h-4 mr-2" />Build from repo (no AI needed)
           </Button>
           <div className="space-y-2">
             {steps.map((s) => (

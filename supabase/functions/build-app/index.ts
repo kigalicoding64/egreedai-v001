@@ -157,10 +157,12 @@ async function handle(req: Request): Promise<Response> {
   const stage = String(body?.stage ?? "plan");
   const prompt = String(body?.prompt ?? "").trim().slice(0, 6000);
   const stack = String(body?.stack ?? "").slice(0, 200);
+  const reference = String(body?.reference ?? "").slice(0, 10000);
+  const fullPrompt = reference ? `${prompt}\n\nREFERENCE OPEN-SOURCE REPOSITORY (follow its structure, conventions and dependencies; adapt it to the request):\n${reference}` : prompt;
   try {
     if (stage === "plan") {
       if (prompt.length < 8) return json({ error: "Describe the app you want in at least a sentence." }, 400);
-      const plan = await planProject(prompt, stack, key);
+      const plan = await planProject(fullPrompt, stack, key);
       if (!plan || !Array.isArray(plan.files) || !plan.files.length) return json({ error: "The planner could not shape this request. Try describing it more concretely." }, 422);
       const seen = new Set<string>(); plan.files = plan.files.filter((f: any) => f?.path && !seen.has(f.path) && seen.add(f.path)).slice(0, 14);
       return json({ plan });
@@ -169,7 +171,7 @@ async function handle(req: Request): Promise<Response> {
       const plan = body?.plan;
       const targets = Array.isArray(body?.targets) ? body.targets.slice(0, 5) : [];
       if (!plan || !targets.length) return json({ error: "Missing plan or targets." }, 400);
-      return json({ files: await writeFiles(prompt, plan, key, targets) });
+      return json({ files: await writeFiles(fullPrompt, plan, key, targets) });
     }
     const files: ProjectFile[] = Array.isArray(body?.files)
       ? body.files.filter((f: any) => f?.path && typeof f.content === "string").slice(0, 20) : [];
