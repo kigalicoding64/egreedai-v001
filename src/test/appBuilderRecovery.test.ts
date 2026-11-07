@@ -15,6 +15,11 @@ describe('App Builder single-file recovery', () => {
     expect(recoverSingleFile('export const total = 2 + 2;')).toBe('export const total = 2 + 2;');
   });
 
+  it('preserves complete Python file contents and indentation', () => {
+    const code = 'def total(values: list[int]) -> int:\n    return sum(values)\n\nif __name__ == "__main__":\n    print(total([1, 2]))\n';
+    expect(recoverSingleFile(`\`\`\`python\n${code}\`\`\``)).toBe(code);
+  });
+
   it('rejects an unreadable object instead of inventing file contents', () => {
     expect(recoverSingleFile('{"files":[]}')).toBeNull();
   });
