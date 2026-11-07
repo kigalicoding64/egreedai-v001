@@ -6,6 +6,7 @@
 - [x] Test navigation and verify signed-in chat/error flows.
 
 # AI replies
+- [ ] Add shared Python expertise for complete Python files and verify file recovery.
 - [ ] Complete a signed-in App Builder run and inspect the download; blocked until the selected Gemini key's daily 20-request quota resets. No alternate provider may be used.
 - [x] Verify malformed single-file recovery, request pacing, and terminal no-retry behavior; all 46 project tests pass.
 - [x] Remove App Builder provider/workspace fallbacks; signed-in plan, files, review, fix and download succeeded; terminal errors stop without retry.
