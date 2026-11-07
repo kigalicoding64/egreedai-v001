@@ -61,7 +61,7 @@ async function planProject(prompt: string, stack: string, key: string) {
   const msgs = [
     { role: "system", content: sysWith(`Plan the project. Reply with JSON only, no prose:
 {"name":"kebab-case-name","summary":"one sentence","stack":["..."],"steps":["ordered build steps"],"entities":[{"name":"table_name","fields":["id uuid pk","..."],"notes":"..."}],"endpoints":[{"method":"GET","path":"/api/...","purpose":"...","auth":"public|user|admin"}],"files":[{"path":"relative/path.ext","purpose":"what it contains"}]}
-Keep it to at most 14 files. Include a README, the API entry point, the data layer, at least one test file, and a package/dependency manifest.`) },
+Keep it to at most 14 files. Include a README, at least one test file, and the appropriate dependency manifest. For Python requests include complete .py modules, pyproject.toml or requirements.txt, and pytest tests; include an API entry point and data layer only when the request needs them. For mixed React/Python projects keep the Python service and its dependencies separate from the Vite front end.`) },
     { role: "user", content: `Build request:\n${prompt}\n\nPreferred stack: ${stack || "your choice"}` },
   ];
   const { text } = await llm("reason", msgs, key, { temperature: 0.2, maxTokens: 4000, json: true });
@@ -95,8 +95,8 @@ Escape newlines properly inside JSON strings. Write every requested file complet
 async function validateProject(files: ProjectFile[], key: string) {
   const listing = files.map((f) => `--- ${f.path} ---\n${f.content}`).join("\n\n").slice(0, 30000);
   const { text } = await llm("reason", [
-    { role: "system", content: `You are the validation stage. Read the project files and report real defects only: syntax errors, imports of files or packages that do not exist in the project or manifest, undefined symbols, mismatched route/handler names, schema/query mismatches, missing input validation, security holes (injection, broken authorization, secret exposure), and incomplete files.
-Reply with JSON only: {"ok":true|false,"issues":[{"path":"file","severity":"high|medium|low","problem":"...","fix":"..."}]}` },
+    { role: "system", content: sysWith(`You are the validation stage. Read the project files and report real defects only: syntax errors, imports of files or packages that do not exist in the project or manifest, undefined symbols, mismatched route/handler names, schema/query mismatches, missing input validation, security holes (injection, broken authorization, secret exposure), and incomplete files. For Python also check indentation, declared dependencies, runnable entry points, Pydantic schemas and pytest test setup. This is source review, not execution; never claim tests were run.
+Reply with JSON only: {"ok":true|false,"issues":[{"path":"file","severity":"high|medium|low","problem":"...","fix":"..."}]}`) },
     { role: "user", content: listing },
   ], key, { temperature: 0, maxTokens: 2000, json: true });
   const review = extractJson<{ ok: boolean; issues: any[] }>(text);
